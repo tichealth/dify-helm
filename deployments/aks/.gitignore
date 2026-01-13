@@ -1,0 +1,16 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+terraform-apply.log
+.terraform.lock.hcl
+
+# Azure credentials
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db

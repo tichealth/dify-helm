@@ -1,0 +1,233 @@
+# Dify Helm Chart Values for AKS
+# Using dify-helm from https://borispolonsky.github.io/dify-helm
+# Configured for Azure Kubernetes Service
+
+global:
+  edition: "SELF_HOSTED"
+  appSecretKey: "PleaseReplaceThisToYourSecretOrUse"
+  internalApiKey: ""
+
+# Image versions
+image:
+  api:
+    repository: langgenius/dify-api
+    tag: "1.11.2"
+    pullPolicy: IfNotPresent
+  web:
+    repository: langgenius/dify-web
+    tag: "1.11.2"
+    pullPolicy: IfNotPresent
+  sandbox:
+    repository: langgenius/dify-sandbox
+    tag: "0.2.12"  # Updated to match docker-compose.yaml for Dify 1.11.2
+    pullPolicy: IfNotPresent
+  proxy:
+    repository: nginx
+    tag: latest
+    pullPolicy: IfNotPresent
+  ssrfProxy:
+    repository: ubuntu/squid
+    tag: latest
+    pullPolicy: IfNotPresent
+  pluginDaemon:
+    repository: langgenius/dify-plugin-daemon
+    tag: "0.5.2-local"  # Updated from 0.1.1-local to match docker-compose.yaml for Dify 1.11.2
+    pullPolicy: IfNotPresent
+
+# API Configuration
+api:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+  persistence:
+    enabled: true
+    persistentVolumeClaim:
+      storageClass: "azurefile"
+      accessModes: ReadWriteMany
+      size: 5Gi
+
+# Worker Configuration
+worker:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Worker Beat Configuration
+beat:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Web (Frontend) Configuration
+web:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+
+# Sandbox Configuration
+sandbox:
+  enabled: true
+  replicas: 1
+  auth:
+    apiKey: "dify-sandbox"
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+# SSRF Proxy Configuration
+ssrfProxy:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Plugin Daemon Configuration
+pluginDaemon:
+  enabled: true
+  replicas: 1
+  auth:
+    serverKey: "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
+    difyApiKey: "QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1"
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "2048Mi"
+      cpu: "2000m"
+  persistence:
+    enabled: true
+    persistentVolumeClaim:
+      storageClass: "azurefile"
+      accessModes: ReadWriteMany
+      size: 20Gi
+
+# Proxy (Nginx) Configuration
+proxy:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Service Configuration
+# Using ClusterIP since we're using Ingress for external access
+service:
+  type: ClusterIP  # Changed from LoadBalancer - Ingress handles external access
+  port: 80
+
+# Ingress Configuration (HTTPS/TLS enabled)
+ingress:
+  enabled: true  # HTTPS enabled via nginx-ingress and cert-manager
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Use "letsencrypt-staging" for testing
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+  hosts:
+    - host: dify-dev.tichealth.com.au
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: dify-tls
+      hosts:
+        - dify-dev.tichealth.com.au
+
+# PostgreSQL Configuration (using Bitnami subchart)
+postgresql:
+  enabled: true
+  global:
+    postgresql:
+      auth:
+        username: "postgres"
+        password: "difyai123456"
+        database: "dify"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+# Redis Configuration (using Bitnami subchart)
+redis:
+  enabled: true
+  auth:
+    password: "difyai123456"
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+  replica:
+    replicaCount: 0  # Disable replicas for now
+
+# Weaviate disabled (we'll use Qdrant)
+weaviate:
+  enabled: false
+
+# External Qdrant Configuration
+# Note: We need to deploy Qdrant separately or add it as a subchart
+# For now, configure as external - we'll deploy Qdrant separately
+externalQdrant:
+  enabled: true
+  endpoint: "http://dify-qdrant:6333"  # Update after Qdrant is deployed
+  apiKey: "difyai123456"
+
+# Storage Configuration (using local persistence for now)
+externalS3:
+  enabled: false
+
+# External Secrets (disabled for now)
+externalSecret:
+  enabled: false

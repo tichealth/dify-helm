@@ -1,0 +1,27 @@
+# Terraform Variables for Dify AKS Deployment
+# Copy this file to terraform.tfvars and fill in your values
+# NOTE: terraform.tfvars is git-ignored - your actual values will not be committed
+
+project_name = "dify"
+location     = "eastus"
+
+# Optional: use existing RG by name, else leave blank
+resource_group_name = ""
+
+# AKS
+kubernetes_version = null  # Use latest if null
+node_count         = 1
+vm_size            = "Standard_D4s_v5"
+
+# Azure Blob Storage (for Terraform state or Dify storage)
+# Get the key using: az storage account keys list --resource-group rg-tfstate-test-ae1 --account-name tichealthdifytest45
+azure_blob_account_name   = "tichealthdifytest45"
+azure_blob_account_key    = "REPLACE_WITH_YOUR_KEY"  # Get from: az storage account keys list --resource-group rg-tfstate-test-ae1 --account-name tichealthdifytest45 --query '[0].value' -o tsv
+azure_blob_container_name = "tfstate"
+azure_blob_account_url    = "https://tichealthdifytest45.blob.core.windows.net"
+
+# Optional tags
+tags = {
+  env     = "dev"
+  project = "dify"
+}

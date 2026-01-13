@@ -19,6 +19,23 @@ helm install my-release dify/dify
 ```
 For customized installation, please refer to the [README.md](https://github.com/BorisPolonsky/dify-helm/blob/master/charts/dify/README.md) file.
 
+## Cloud Platform Deployments
+
+### Azure Kubernetes Service (AKS)
+
+A complete AKS deployment example is available in the `deployments/aks/` directory. This includes:
+- Terraform configuration for AKS infrastructure
+- Automated deployment script (`deploy.sh`)
+- Pre-configured Helm values for AKS
+
+To deploy on AKS:
+```bash
+cd deployments/aks
+./deploy.sh
+```
+
+See [deployments/aks/README.md](deployments/aks/README.md) for detailed instructions.
+
 ## Network Architecture
 
 The following diagram illustrates the complete network architecture and service topology of the Dify Helm deployment:
