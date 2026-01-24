@@ -215,4 +215,6 @@ When upgrading, verify these match `dify/docker/docker-compose.yaml`:
 
 - [HTTPS Setup Guide](./HTTPS_SETUP_GUIDE.md) - HTTPS/TLS configuration
 - [Docker Compose Comparison](./DOCKER_COMPOSE_COMPARISON.md) - Configuration alignment
-- [Cost Estimation](./COST_ESTIMATION.md) - Cost breakdown and optimization
+- [Cost Summary](./COST_SUMMARY_2026-01-24.md) - Current estimates
+- [Cost Optimizations](./COST_OPTIMIZATIONS_2026-01-24.md) - Savings opportunities
+- [Infracost](./INFRACOST.md) - Exact estimates from Terraform

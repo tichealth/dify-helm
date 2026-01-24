@@ -26,3 +26,8 @@ output "postgresql_connection_string" {
   value       = var.use_azure_postgres ? "postgresql://${var.postgresql_username}@${azurerm_postgresql_flexible_server.pg[0].fqdn}:5432/${var.postgresql_database}" : "N/A (using in-cluster PostgreSQL via Helm)"
   sensitive   = false
 }
+
+output "postgresql_read_replica_fqdns" {
+  description = "FQDNs of PostgreSQL read replicas (if any) - Currently not implemented, returns empty list"
+  value       = []  # Read replicas not implemented in current version
+}

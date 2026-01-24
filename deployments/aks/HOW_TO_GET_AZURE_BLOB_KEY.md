@@ -52,13 +52,13 @@ If you need to create a new storage account:
 
 ```bash
 # Create resource group (if needed)
-az group create --name <resource-group-name> --location eastus
+az group create --name <resource-group-name> --location australiaeast
 
 # Create storage account
 az storage account create \
   --name <storage-account-name> \
   --resource-group <resource-group-name> \
-  --location eastus \
+  --location australiaeast \
   --sku Standard_LRS \
   --kind StorageV2
 

@@ -23,6 +23,7 @@ HELM_REPO_URL="https://borispolonsky.github.io/dify-helm"
 NAMESPACE="dify"
 RELEASE_NAME="dify"
 VALUES_FILE="${1:-$SCRIPT_DIR/values.yaml}"  # Allow passing values file as argument
+CERT_EMAIL="${CERT_EMAIL:-vivek.narayanan@tichealth.com.au}"
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Dify Hybrid Deployment (Terraform + Helm)${NC}"
@@ -164,7 +165,9 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-terraform apply -auto-approve -target=azurerm_kubernetes_cluster.aks -target=azurerm_resource_group.rg -target=azurerm_kubernetes_cluster_node_pool.spot 2>&1 | tee terraform-apply.log
+# Apply all infrastructure (including PostgreSQL if enabled)
+# Using -target only for AKS resources to avoid recreating everything unnecessarily
+terraform apply -auto-approve 2>&1 | tee terraform-apply.log
 
 echo -e "${GREEN}✓ Infrastructure created/updated${NC}\n"
 
@@ -247,8 +250,67 @@ echo -e "${YELLOW}Step 6: Ensuring namespace exists...${NC}"
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 echo -e "${GREEN}✓ Namespace ready${NC}\n"
 
-# Step 7: Deploy Dify with Helm
-echo -e "${YELLOW}Step 7: Deploying Dify with Helm...${NC}"
+# Step 7: Install nginx-ingress controller
+echo -e "${YELLOW}Step 7: Installing nginx-ingress...${NC}"
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
+helm repo update >/dev/null 2>&1
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=LoadBalancer \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+  --wait --timeout 5m
+echo -e "${GREEN}✓ nginx-ingress installed${NC}\n"
+
+# Step 8: Install cert-manager
+echo -e "${YELLOW}Step 8: Installing cert-manager...${NC}"
+helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+helm repo update >/dev/null 2>&1
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.crds.yaml
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.13.3 \
+  --wait --timeout 5m
+echo -e "${GREEN}✓ cert-manager installed${NC}\n"
+
+# Step 9: Create ClusterIssuer (Let's Encrypt)
+echo -e "${YELLOW}Step 9: Creating ClusterIssuer...${NC}"
+kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ${CERT_EMAIL}
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ${CERT_EMAIL}
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+EOF
+echo -e "${GREEN}✓ ClusterIssuer applied${NC}\n"
+
+# Step 10: Deploy Dify with Helm
+echo -e "${YELLOW}Step 10: Deploying Dify with Helm...${NC}"
 echo "This will deploy Dify and all dependencies (Redis, PostgreSQL, etc.)"
 read -p "Continue? (y/n) " -n 1 -r
 echo
@@ -275,14 +337,24 @@ helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
 
 echo -e "${GREEN}✓ Dify deployed${NC}\n"
 
-# Step 8: Wait for services to be ready
-echo -e "${YELLOW}Step 8: Waiting for services to be ready...${NC}"
+# Step 11: Wait for services to be ready
+echo -e "${YELLOW}Step 11: Waiting for services to be ready...${NC}"
 kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true
 kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-web -n "$NAMESPACE" || true
 
 echo -e "${GREEN}✓ Services are ready${NC}\n"
 
-# Step 9: Display deployment status
+# Step 12: Update NSG rules for LoadBalancer access
+echo -e "${YELLOW}Step 12: Updating NSG rules for LoadBalancer...${NC}"
+if [ -f "$SCRIPT_DIR/fix-nsg-rules.sh" ]; then
+    chmod +x "$SCRIPT_DIR/fix-nsg-rules.sh"
+    "$SCRIPT_DIR/fix-nsg-rules.sh" || echo -e "${YELLOW}⚠ NSG rule update failed${NC}"
+else
+    echo -e "${YELLOW}⚠ fix-nsg-rules.sh not found, skipping${NC}"
+fi
+echo ""
+
+# Step 13: Display deployment status
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Deployment Complete!${NC}"
 echo -e "${GREEN}========================================${NC}\n"
@@ -302,3 +374,48 @@ echo ""
 
 echo "To get service URLs:"
 echo "  kubectl get svc -n $NAMESPACE"
+echo ""
+
+# Step 14: Get LoadBalancer IP address (ingress)
+echo -e "${YELLOW}Step 14: Getting LoadBalancer IP address...${NC}"
+LB_IP=""
+SERVICE_NAMESPACE="ingress-nginx"
+SERVICE_NAME="ingress-nginx-controller"
+
+echo "Waiting for LoadBalancer IP to be assigned (this may take 1-2 minutes)..."
+MAX_WAIT=120  # 2 minutes
+WAIT_COUNT=0
+while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+    LB_IP=$(kubectl get svc -n "$SERVICE_NAMESPACE" "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ] && [ "$LB_IP" != "<pending>" ]; then
+        break
+    fi
+    sleep 5
+    WAIT_COUNT=$((WAIT_COUNT + 5))
+    if [ $((WAIT_COUNT % 30)) -eq 0 ]; then
+        echo "  Still waiting for IP... ($WAIT_COUNT seconds elapsed)"
+    fi
+done
+
+if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ] && [ "$LB_IP" != "<pending>" ]; then
+    echo -e "${GREEN}✓ LoadBalancer IP obtained${NC}\n"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}LoadBalancer IP Address${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo ""
+    echo "IP Address: $LB_IP"
+    echo ""
+    echo "Access URLs:"
+    echo "  HTTP:  http://$LB_IP"
+    echo "  HTTPS: https://dify-dev.tichealth.com.au (after DNS configured)"
+    echo ""
+    echo "Next Steps:"
+    echo "  1. Wait 1-2 minutes for NSG rules to propagate"
+    echo "  2. Configure DNS: dify-dev.tichealth.com.au -> $LB_IP"
+    echo "  3. Wait for cert-manager to issue TLS, then test HTTPS"
+    echo ""
+else
+    echo -e "${YELLOW}⚠ LoadBalancer IP is still pending${NC}"
+    echo "Check status with: kubectl get svc -n $SERVICE_NAMESPACE $SERVICE_NAME"
+    echo ""
+fi

@@ -1,0 +1,60 @@
+# Test Environment Configuration
+# Copy to terraform.tfvars and fill in your values
+
+project_name = "dify-test"
+location     = "australiaeast"  # Sydney, Australia
+
+# Optional: use existing RG by name, else leave blank
+resource_group_name = ""
+
+# AKS
+kubernetes_version = null
+node_count         = 1
+vm_size            = "Standard_D2s_v5"
+
+# Spot node pool for non-critical workloads
+enable_spot_node_pool = true
+spot_node_pool_name   = "spot"
+spot_vm_size          = "Standard_D4s_v5"
+spot_node_count       = 1
+spot_max_price        = -1
+
+# Azure Blob Storage
+azure_blob_account_name   = "REPLACE_WITH_YOUR_STORAGE_ACCOUNT"
+azure_blob_account_key    = "REPLACE_WITH_YOUR_STORAGE_KEY"
+azure_blob_container_name = "dify-data"
+azure_blob_account_url    = "https://REPLACE_WITH_YOUR_STORAGE_ACCOUNT.blob.core.windows.net"
+
+# Dify secrets
+dify_secret_key    = "REPLACE_WITH_SECURE_RANDOM_STRING"
+dify_init_password = ""
+
+# PostgreSQL Configuration - Azure Flexible Server
+use_azure_postgres = true
+postgresql_username = "difyadmin"
+postgresql_password = "REPLACE_WITH_SECURE_PASSWORD"
+postgresql_database = "dify"
+postgres_version = "16"
+postgres_sku_name = "B_Standard_B1ms"  # 1 vCore, 2GB RAM
+postgres_storage_mb = 32768  # 32GB
+postgres_storage_tier = "P10"  # 500 IOPS (higher than dev)
+postgres_read_replica_count = 1  # 1 read replica for test
+postgres_read_replica_zone = "2"  # Different AZ from primary (primary typically in zone 1)
+postgres_public_access = true
+postgres_open_firewall_all = true  # Test only
+postgres_require_secure_transport = true
+
+# Redis Configuration
+redis_password = "REPLACE_WITH_SECURE_PASSWORD"
+redis_chart_version = "19.6.2"
+
+# Qdrant Configuration
+qdrant_api_key = "REPLACE_WITH_SECURE_API_KEY"
+qdrant_chart_version = "1.16.3"
+
+# Optional tags
+tags = {
+  env     = "test"
+  project = "dify"
+  managed = "terraform"
+}

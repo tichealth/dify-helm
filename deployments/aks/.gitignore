@@ -14,3 +14,9 @@ terraform-apply.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Infracost
+.infracost/
+infracost-auth.json
+.infracost.env
+*.infracost.json

@@ -18,7 +18,7 @@
 ### Documentation
 - Consolidated all HTTPS-related documentation into `HTTPS_SETUP_GUIDE.md`
 - Updated `README.md` with current HTTPS status
-- Updated `COST_ESTIMATION.md` to include HTTPS costs
+- Added `COST_SUMMARY_2026-01-24.md` and `COST_OPTIMIZATIONS_2026-01-24.md`
 - Created `DOCUMENTATION_INDEX.md` for easy navigation
 - Removed redundant documentation files (7 files consolidated)
 

@@ -4,13 +4,12 @@ Complete guide for enabling and managing HTTPS/TLS for your Dify deployment on A
 
 ## Current Status
 
-✅ **HTTPS is enabled and working**
+Check current HTTPS status:
 
-- **Domain**: `dify-dev.tichealth.com.au`
-- **Certificate**: Let's Encrypt (Production)
-- **Status**: READY
-- **Valid Until**: April 13, 2026 (auto-renewal enabled)
-- **Auto-renewal**: Enabled (renews 30 days before expiration)
+```bash
+kubectl get certificate -n dify
+kubectl describe certificate dify-tls -n dify
+```
 
 ## Overview
 
@@ -23,7 +22,7 @@ HTTPS is configured using:
 ## Architecture
 
 ```
-Internet → nginx-ingress LoadBalancer (52.154.66.82) → Ingress (TLS) → Dify Service (ClusterIP) → Dify Pods
+Internet → nginx-ingress LoadBalancer (<ingress-lb-ip>) → Ingress (TLS) → Dify Service (ClusterIP) → Dify Pods
 ```
 
 ## Prerequisites
@@ -54,7 +53,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 Get the LoadBalancer IP:
 ```bash
 kubectl get svc -n ingress-nginx ingress-nginx-controller
-# Note the EXTERNAL-IP (e.g., 52.154.66.82)
+# Note the EXTERNAL-IP (e.g., <ingress-lb-ip>)
 ```
 
 ### Step 2: Install cert-manager
@@ -164,7 +163,7 @@ Create an A record in your DNS provider:
 
 - **Name**: `dify-dev` (or your subdomain)
 - **Type**: `A`
-- **Value**: `52.154.66.82` (nginx-ingress LoadBalancer IP)
+- **Value**: `<ingress-lb-ip>` (nginx-ingress LoadBalancer IP)
 - **TTL**: `300` (or default)
 
 ### Step 7: Deploy the Updated Configuration
@@ -198,10 +197,9 @@ curl -I https://dify-dev.tichealth.com.au
 ## Current Configuration
 
 - **Domain**: `dify-dev.tichealth.com.au`
-- **Ingress LoadBalancer IP**: `52.154.66.82`
+- **Ingress LoadBalancer IP**: `kubectl get svc -n ingress-nginx ingress-nginx-controller`
 - **Certificate**: Let's Encrypt (Production)
-- **Certificate Status**: READY
-- **Auto-renewal**: Enabled (renews 30 days before expiration)
+- **Certificate Status**: `kubectl get certificate -n dify`
 
 ## Troubleshooting
 
@@ -219,7 +217,7 @@ curl -I https://dify-dev.tichealth.com.au
 1. **Check DNS resolution from cluster**:
    ```bash
    kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup dify-dev.tichealth.com.au
-   # Should return: 52.154.66.82
+# Should return: <ingress-lb-ip>
    ```
 
 2. **If DNS doesn't resolve from cluster**:
@@ -336,7 +334,7 @@ helm upgrade dify dify/dify -f values.yaml --namespace dify
 ### Current Setup
 
 - **Domain**: `dify-dev.tichealth.com.au`
-- **A Record**: `dify-dev` → `52.154.66.82`
+- **A Record**: `dify-dev` → `<ingress-lb-ip>`
 - **DNS Provider**: Your DNS provider for `tichealth.com.au`
 
 ### Verify DNS

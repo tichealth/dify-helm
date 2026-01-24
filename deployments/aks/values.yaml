@@ -147,15 +147,14 @@ proxy:
       memory: "256Mi"
       cpu: "200m"
 
-# Service Configuration
-# Using ClusterIP since we're using Ingress for external access
+# Service Configuration - Use ClusterIP (Ingress handles external access)
 service:
-  type: ClusterIP  # Changed from LoadBalancer - Ingress handles external access
+  type: ClusterIP  # Changed from LoadBalancer
   port: 80
 
-# Ingress Configuration (HTTPS/TLS enabled)
+# Ingress Configuration - Enable and configure
 ingress:
-  enabled: true  # HTTPS enabled via nginx-ingress and cert-manager
+  enabled: true
   className: "nginx"
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Use "letsencrypt-staging" for testing

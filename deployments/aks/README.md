@@ -4,31 +4,22 @@ This directory contains the Terraform and Helm configuration for deploying Dify 
 
 ## Quick Links
 
-- [Cost Estimation](./COST_ESTIMATION.md) - Detailed cost breakdown and optimization recommendations
+- [Cost Summary](./COST_SUMMARY_2026-01-24.md) - Current cost estimates
+- [Cost Optimizations](./COST_OPTIMIZATIONS_2026-01-24.md) - Savings opportunities
+- [Infracost](./INFRACOST.md) - Generate exact estimates from Terraform
 - [HTTPS Guide](./HTTPS_SETUP_GUIDE.md) - Complete HTTPS/TLS setup and troubleshooting
 - [Upgrade Guide](./UPGRADE_GUIDE.md) - How to upgrade Dify versions
 - [Docker Compose Comparison](./DOCKER_COMPOSE_COMPARISON.md) - Configuration alignment reference
 
 ## Current Deployment Status
 
-- **AKS Cluster**: 1 node (Standard_D4s_v5)
 - **Dify Version**: 1.11.2
-- **HTTPS**: ✅ **Enabled** - `https://dify-dev.tichealth.com.au`
-- **Certificate**: Let's Encrypt (Production) - Auto-renewing
-- **Estimated Monthly Cost**: ~$77-90/month (includes HTTPS)
+- **HTTPS Status**: `kubectl get certificate -n dify`
+- **Ingress IP**: `kubectl get svc -n ingress-nginx ingress-nginx-controller`
 
 ## Quick Start
 
-### Deploy Infrastructure
-
-```bash
-cd dify-helm/deployments/aks
-terraform init
-terraform plan
-terraform apply
-```
-
-### Deploy Dify Application
+### Deploy Infrastructure + Dify
 
 ```bash
 ./deploy.sh
@@ -43,40 +34,39 @@ terraform apply
 
 ## HTTPS Status
 
-✅ **HTTPS is enabled and working**
-
-- **Domain**: `dify-dev.tichealth.com.au`
-- **Certificate**: Let's Encrypt (Production, auto-renewing)
-- **Auto-renewal**: Enabled (cert-manager will renew automatically)
-- **Access**: `https://dify-dev.tichealth.com.au`
+Check status:
+```bash
+kubectl get certificate -n dify
+```
 
 For troubleshooting or setup details, see [HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md).
 
 ## Cost Information
 
-See [COST_ESTIMATION.md](./COST_ESTIMATION.md) for:
-- Detailed cost breakdown
-- Optimization recommendations
-- Scaling scenarios
-- HTTPS cost impact
+- [COST_SUMMARY_2026-01-24.md](./COST_SUMMARY_2026-01-24.md)
+- [COST_OPTIMIZATIONS_2026-01-24.md](./COST_OPTIMIZATIONS_2026-01-24.md)
+- [INFRACOST.md](./INFRACOST.md)
 
 ## Documentation
 
-- **[COST_ESTIMATION.md](./COST_ESTIMATION.md)** - Cost analysis and optimization
+- **[COST_SUMMARY_2026-01-24.md](./COST_SUMMARY_2026-01-24.md)** - Cost summary (Dev/Test/Prod)
+- **[COST_OPTIMIZATIONS_2026-01-24.md](./COST_OPTIMIZATIONS_2026-01-24.md)** - Cost optimizations
+- **[INFRACOST.md](./INFRACOST.md)** - Infracost usage
 - **[HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md)** - Complete HTTPS setup, troubleshooting, and DNS configuration
 - **[UPGRADE_GUIDE.md](./UPGRADE_GUIDE.md)** - Dify version upgrade procedures
 - **[DOCKER_COMPOSE_COMPARISON.md](./DOCKER_COMPOSE_COMPARISON.md)** - Configuration alignment with docker-compose.yaml
-- **[POD_STATUS_SUMMARY.md](./POD_STATUS_SUMMARY.md)** - Current pod status and health
 - **[HOW_TO_GET_AZURE_BLOB_KEY.md](./HOW_TO_GET_AZURE_BLOB_KEY.md)** - Azure Storage account key retrieval
 - **[DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)** - Complete documentation index
 - **[CHANGELOG.md](./CHANGELOG.md)** - Deployment changes and updates
+- **[CHANGES_TO_PROPAGATE.md](./CHANGES_TO_PROPAGATE.md)** - Changes to propagate to other environments
+- **[POSTGRESQL_ARCHITECTURE.md](./POSTGRESQL_ARCHITECTURE.md)** - PostgreSQL deployment architecture (in-cluster vs Azure Flexible Server)
 
 ## Architecture
 
 ```
 Internet
    ↓
-nginx-ingress LoadBalancer (52.154.66.82)
+nginx-ingress LoadBalancer (<ingress-lb-ip>)
    ↓
 Ingress (TLS termination)
    ↓
@@ -102,7 +92,7 @@ kubectl get certificate -n dify
 kubectl get ingress -n dify
 
 # Test HTTPS
-curl -I https://dify-dev.tichealth.com.au
+curl -I https://dify-dev.tichealth.com.au/apps
 
 # Check all pods
 kubectl get pods -n dify
