@@ -2,16 +2,16 @@ version: 0.1
 
 projects:
   - name: dify-aks-dev
-    path: ../../../dify-tf-aks
+    path: .
     terraform_var_files:
-      - environments/dev.tfvars
+      - terraform.tfvars
 
   - name: dify-aks-test
-    path: ../../../dify-tf-aks
+    path: .
     terraform_var_files:
-      - environments/test.tfvars
+      - environments/test.tfvars.example
 
   - name: dify-aks-prod
-    path: ../../../dify-tf-aks
+    path: .
     terraform_var_files:
-      - environments/prod.tfvars
+      - environments/prod.tfvars.example

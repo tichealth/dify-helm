@@ -5,18 +5,18 @@ Region: Australia East (australiaeast)
 Currency: AUD (estimated)
 
 ## Scope
-Based on current Terraform environment inputs:
-- `dify-tf-aks/environments/dev.tfvars`
-- `dify-tf-aks/environments/test.tfvars`
-- `dify-tf-aks/environments/prod.tfvars`
+Based on Terraform in this directory:
+- **Dev**: `terraform.tfvars`
+- **Test**: `environments/test.tfvars.example` (or `environments/test.tfvars` if created)
+- **Prod**: `environments/prod.tfvars.example` (or `environments/prod.tfvars` if created)
 
-Use Infracost for exact, current pricing.
+Use Infracost for exact, current pricing (see `INFRACOST.md`).
 
 ## Resources by environment
 
 ### Dev
-- AKS system pool: 1 x Standard_B2s
-- AKS spot pool: 1 x Standard_D2as_v5 (spot enabled)
+- AKS system pool: 1 x Standard_D2ads_v6 (from `terraform.tfvars`)
+- AKS spot pool: disabled (no spot in current config)
 - PostgreSQL Flexible Server: B_Standard_B1ms, 32 GB
 - Storage: Azure Blob (usage-based), AKS disks, Azure Files PVCs
 - Networking: Standard Load Balancer + public IP

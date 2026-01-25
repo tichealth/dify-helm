@@ -24,6 +24,17 @@ To save a report:
 infracost breakdown --config-file infracost.yml --out-file infracost-report.json
 ```
 
-## Notes
-- This config points to `dify-tf-aks` and uses env var files.
-- Update `dify-tf-aks/environments/*.tfvars` before running for accurate results.
+## Configuration
+
+The `infracost.yml` is self-contained and points to this directory:
+- **Dev**: Uses `terraform.tfvars` (git-ignored, contains actual values)
+- **Test/Prod**: Uses example files from `environments/*.tfvars.example`
+
+For accurate test/prod estimates, create actual tfvars files:
+```bash
+cp environments/test.tfvars.example environments/test.tfvars
+cp environments/prod.tfvars.example environments/prod.tfvars
+# Then fill in real values (these files should be git-ignored)
+```
+
+Then update `infracost.yml` to use the actual files instead of `.example` files.
