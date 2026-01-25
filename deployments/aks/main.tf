@@ -163,6 +163,70 @@ resource "azurerm_postgresql_flexible_server_configuration" "require_secure_tran
   value     = "off"
 }
 
+# Enable PostgreSQL extensions required by Dify
+# Azure PostgreSQL requires extensions to be allow-listed via azure.extensions configuration
+# Dify needs: vector (for embeddings), uuid-ossp (for UUID generation)
+resource "azurerm_postgresql_flexible_server_configuration" "azure_extensions" {
+  count     = var.use_azure_postgres ? 1 : 0
+  name      = "azure.extensions"
+  server_id = azurerm_postgresql_flexible_server.pg[0].id
+  value     = "vector,uuid-ossp"
+}
+
+# Create extensions in the main Dify database
+resource "null_resource" "create_extensions_dify" {
+  count = var.use_azure_postgres ? 1 : 0
+
+  depends_on = [
+    azurerm_postgresql_flexible_server_configuration.azure_extensions,
+    azurerm_postgresql_flexible_server_database.db
+  ]
+
+  triggers = {
+    server_id   = azurerm_postgresql_flexible_server.pg[0].id
+    database_id = azurerm_postgresql_flexible_server_database.db[0].id
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      sleep 10
+      PGPASSWORD='${replace(var.postgresql_password, "'", "\\'")}' psql \
+        -h ${azurerm_postgresql_flexible_server.pg[0].fqdn} \
+        -U ${var.postgresql_username} \
+        -d ${var.postgresql_database} \
+        -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" \
+        2>&1 || true
+    EOT
+  }
+}
+
+# Create extensions in the plugin daemon database
+resource "null_resource" "create_extensions_plugin" {
+  count = var.use_azure_postgres ? 1 : 0
+
+  depends_on = [
+    azurerm_postgresql_flexible_server_configuration.azure_extensions,
+    azurerm_postgresql_flexible_server_database.plugin_db
+  ]
+
+  triggers = {
+    server_id   = azurerm_postgresql_flexible_server.pg[0].id
+    database_id = azurerm_postgresql_flexible_server_database.plugin_db[0].id
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      sleep 10
+      PGPASSWORD='${replace(var.postgresql_password, "'", "\\'")}' psql \
+        -h ${azurerm_postgresql_flexible_server.pg[0].fqdn} \
+        -U ${var.postgresql_username} \
+        -d ${var.plugin_database_name} \
+        -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" \
+        2>&1 || true
+    EOT
+  }
+}
+
 # ============================================================================
 # END OF INFRASTRUCTURE RESOURCES
 # Kubernetes applications are deployed via Helm (see deploy.sh and helm/dify/)

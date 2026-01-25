@@ -327,13 +327,21 @@ else
     echo "No values file specified, using chart defaults"
 fi
 
+# When using Azure PostgreSQL, pass FQDN from Terraform so we never hardcode it
+SET_POSTGRES=""
+POSTGRES_FQDN=$(cd "$TF_DIR" && terraform output -raw postgresql_fqdn 2>/dev/null || true)
+if [[ -n "$POSTGRES_FQDN" && "$POSTGRES_FQDN" != *"N/A"* ]]; then
+    SET_POSTGRES="--set externalPostgres.address=$POSTGRES_FQDN"
+    echo "Using Azure PostgreSQL FQDN from Terraform: $POSTGRES_FQDN"
+fi
+
 helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
     --namespace "$NAMESPACE" \
     --create-namespace \
     --timeout 20m \
     --atomic \
     --wait \
-    $VALUES_ARG
+    $VALUES_ARG $SET_POSTGRES
 
 echo -e "${GREEN}✓ Dify deployed${NC}\n"
 

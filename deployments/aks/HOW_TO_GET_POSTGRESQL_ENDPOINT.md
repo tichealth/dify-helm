@@ -97,23 +97,18 @@ $server | Select-Object Name, FullyQualifiedDomainName, Location, Sku
 
 ---
 
-## Using the Endpoint in Helm values.yaml
+## Using the Endpoint with Helm
 
-Once you have the FQDN, update your `values.yaml`:
+**Preferred:** Run `./deploy.sh`. It runs Terraform, then passes `terraform output postgresql_fqdn` to Helm via `--set externalPostgres.address=...`, so the FQDN is never hardcoded.
 
-```yaml
-postgresql:
-  enabled: false  # Disable in-cluster PostgreSQL
+**Manual Helm upgrade:** Use the FQDN from Terraform:
 
-externalPostgresql:
-  enabled: true
-  host: "dify-pg-abc123.postgres.database.azure.com"  # Use the FQDN from terraform output
-  port: 5432
-  database: "dify"
-  username: "difyadmin"  # From terraform.tfvars
-  password: "your-password"  # From terraform.tfvars (postgresql_password)
-  sslMode: "require"  # Azure requires SSL
+```bash
+helm upgrade --install dify dify/dify -f values.yaml --namespace dify \
+  --set "externalPostgres.address=$(terraform output -raw postgresql_fqdn)"
 ```
+
+`values.yaml` keeps `externalPostgres.address` as a placeholder; it is overridden by `deploy.sh` or by the `--set` above.
 
 ---
 
@@ -135,20 +130,8 @@ After `terraform apply`, you'll have:
 ## Example: Complete Workflow
 
 ```bash
-# 1. Deploy infrastructure
 cd dify-helm/deployments/aks
-terraform apply
-
-# 2. Get PostgreSQL FQDN
-POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn)
-echo "PostgreSQL FQDN: $POSTGRES_FQDN"
-
-# 3. Update values.yaml (manually or via script)
-# Edit values.yaml and set:
-# externalPostgresql.host = "$POSTGRES_FQDN"
-
-# 4. Deploy Helm chart
-./deploy.sh
+./deploy.sh   # Terraform apply + Helm; FQDN is passed from Terraform to Helm automatically
 ```
 
 ---
