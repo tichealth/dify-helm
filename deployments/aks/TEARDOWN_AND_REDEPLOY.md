@@ -185,24 +185,16 @@ terraform state rm <resource-address>
 
 ## Complete Redeploy Checklist
 
-- [ ] Uninstall Helm releases
-- [ ] Destroy Terraform infrastructure
-- [ ] Initialize Terraform
-- [ ] Review `terraform.tfvars`
-- [ ] Run `terraform apply`
-- [ ] Get AKS credentials
-- [ ] Install nginx-ingress
-- [ ] **Add NSG rules** (CRITICAL!)
-- [ ] Install cert-manager
-- [ ] Create ClusterIssuer
-- [ ] Deploy Dify
-- [ ] Configure DNS
-- [ ] Verify access
+- [ ] Uninstall Helm releases (Step 1)
+- [ ] Destroy Terraform infrastructure (Step 2)
+- [ ] Run `./deploy.sh` (handles Terraform, ingress, cert-manager, Dify, **and** fix-nsg-rules.sh)
+- [ ] Configure DNS (Step 5)
+- [ ] Verify access (Step 6)
 
 ---
 
 ## Notes
 
-- **NSG rules are NOT created automatically** - you must add them manually or use the script
-- **LoadBalancer IP changes** on each deployment - update DNS accordingly
-- **Wait times**: NSG rules (1-2 min), DNS propagation (5-10 min), certificates (2-5 min)
+- **NSG rules** are applied automatically by `deploy.sh` (it runs `fix-nsg-rules.sh`).
+- **LoadBalancer IP changes** on each deployment - update DNS accordingly.
+- **Wait times**: NSG rules (1-2 min), DNS propagation (5-10 min), certificates (2-5 min).
