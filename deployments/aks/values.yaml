@@ -1,6 +1,9 @@
 # Dify Helm Chart Values for AKS
 # Using dify-helm from https://borispolonsky.github.io/dify-helm
 # Configured for Azure Kubernetes Service
+#
+# CPU scaling: Values tuned for D2ads_v6 (2 vCPU). Original baseline was D4s_v5 (4 vCPU);
+# all CPU requests/limits = baseline × 0.5 (same ratio across processes).
 
 global:
   edition: "SELF_HOSTED"
@@ -35,16 +38,17 @@ image:
     pullPolicy: IfNotPresent
 
 # API Configuration
+# CPU: D4s_v5 (4 vCPU) values × 0.5 for D2ads_v6 (2 vCPU)
 api:
   enabled: true
   replicas: 1
   resources:
     requests:
       memory: "512Mi"
-      cpu: "250m"
+      cpu: "125m"
     limits:
       memory: "2Gi"
-      cpu: "2000m"
+      cpu: "1000m"
   persistence:
     enabled: true
     persistentVolumeClaim:
@@ -53,42 +57,46 @@ api:
       size: 5Gi
 
 # Worker Configuration
+# CPU: D4s_v5 × 0.5 for D2ads_v6
 worker:
   enabled: true
   replicas: 1
   resources:
     requests:
       memory: "256Mi"
-      cpu: "250m"
+      cpu: "125m"
     limits:
       memory: "1Gi"
-      cpu: "500m"
+      cpu: "250m"
 
 # Worker Beat Configuration
+# CPU: D4s_v5 × 0.5 for D2ads_v6
 beat:
   enabled: true
   replicas: 1
   resources:
     requests:
       memory: "256Mi"
-      cpu: "250m"
+      cpu: "125m"
     limits:
       memory: "512Mi"
-      cpu: "500m"
+      cpu: "250m"
 
 # Web (Frontend) Configuration
+# CPU: D4s_v5 × 0.5 for D2ads_v6
 web:
   enabled: true
   replicas: 1
   resources:
     requests:
       memory: "512Mi"
-      cpu: "250m"
+      cpu: "125m"
     limits:
       memory: "2Gi"
-      cpu: "2000m"
+      cpu: "1000m"
 
 # Sandbox Configuration
+# CPU: D4s_v5 × 0.5 for D2ads_v6
 sandbox:
   enabled: true
   replicas: 1
@@ -97,24 +105,26 @@ sandbox:
   resources:
     requests:
       memory: "512Mi"
-      cpu: "250m"
+      cpu: "125m"
     limits:
       memory: "1Gi"
-      cpu: "1000m"
+      cpu: "500m"
 
 # SSRF Proxy Configuration
+# CPU: D4s_v5 × 0.5 for D2ads_v6
 ssrfProxy:
   enabled: true
   replicas: 1
   resources:
     requests:
       memory: "128Mi"
-      cpu: "100m"
+      cpu: "50m"
     limits:
       memory: "512Mi"
-      cpu: "500m"
+      cpu: "250m"
 
 # Plugin Daemon Configuration
+# CPU: D4s_v5 × 0.5 for D2ads_v6
 pluginDaemon:
   enabled: true
   replicas: 1
@@ -124,10 +134,10 @@ pluginDaemon:
   resources:
     requests:
       memory: "512Mi"
-      cpu: "500m"
+      cpu: "250m"
     limits:
       memory: "2048Mi"
-      cpu: "2000m"
+      cpu: "1000m"
   persistence:
     enabled: true
     persistentVolumeClaim:
@@ -136,16 +146,17 @@ pluginDaemon:
       size: 20Gi
 
 # Proxy (Nginx) Configuration
+# CPU: D4s_v5 × 0.5 for D2ads_v6
 proxy:
   enabled: true
   replicas: 1
   resources:
     requests:
       memory: "64Mi"
-      cpu: "50m"
+      cpu: "25m"
     limits:
       memory: "256Mi"
-      cpu: "200m"
+      cpu: "100m"
 
 # Service Configuration - Use ClusterIP (Ingress handles external access)
 service:
@@ -187,10 +198,12 @@ postgresql:
     resources:
       requests:
         memory: "256Mi"
-        cpu: "250m"
+        cpu: "125m"  # D4s_v5 × 0.5 for D2ads_v6
       limits:
         memory: "512Mi"
-        cpu: "500m"
+        cpu: "250m"
+  readReplicas:
+    replicaCount: 0  # Disable read replica for dev (saves CPU)
 
 # Redis Configuration (using Bitnami subchart)
 redis:
@@ -204,10 +217,10 @@ redis:
     resources:
       requests:
         memory: "256Mi"
-        cpu: "100m"
+        cpu: "50m"   # D4s_v5 × 0.5 for D2ads_v6
       limits:
         memory: "512Mi"
-        cpu: "500m"
+        cpu: "250m"
   replica:
     replicaCount: 0  # Disable replicas for now
 
