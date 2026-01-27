@@ -4,6 +4,20 @@
 
 set -e
 
+# Parse arguments
+AUTO_APPROVE=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --auto-approve)
+            AUTO_APPROVE=true
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
 echo "=== Teardown Dify Deployment ==="
 echo ""
 
@@ -20,10 +34,12 @@ echo "   - AKS cluster"
 echo "   - Azure PostgreSQL (if enabled)"
 echo "   - All associated resources"
 echo ""
-read -p "   Continue with destroy? (yes/no): " confirm
-if [ "$confirm" != "yes" ]; then
-    echo "   Destroy cancelled."
-    exit 0
+if [ "$AUTO_APPROVE" != "true" ]; then
+    read -p "   Continue with destroy? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        echo "   Destroy cancelled."
+        exit 0
+    fi
 fi
 
 terraform destroy -auto-approve

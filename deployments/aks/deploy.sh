@@ -22,7 +22,24 @@ HELM_CHART="dify/dify"
 HELM_REPO_URL="https://borispolonsky.github.io/dify-helm"
 NAMESPACE="dify"
 RELEASE_NAME="dify"
-VALUES_FILE="${1:-$SCRIPT_DIR/values.yaml}"  # Allow passing values file as argument
+# Parse arguments
+AUTO_APPROVE=false
+VALUES_FILE="$SCRIPT_DIR/values.yaml"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --auto-approve)
+            AUTO_APPROVE=true
+            shift
+            ;;
+        *)
+            if [[ -f "$1" ]]; then
+                VALUES_FILE="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
 CERT_EMAIL="${CERT_EMAIL:-vivek.narayanan@tichealth.com.au}"
 
 echo -e "${GREEN}========================================${NC}"
@@ -158,11 +175,13 @@ echo -e "${GREEN}✓ Terraform initialized${NC}\n"
 # Step 2: Create/Update Infrastructure
 echo -e "${YELLOW}Step 2: Creating/Updating AKS infrastructure...${NC}"
 echo "This will create/update the AKS cluster and related resources."
-read -p "Continue? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Deployment cancelled."
-    exit 1
+if [ "$AUTO_APPROVE" != "true" ]; then
+    read -p "Continue? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Deployment cancelled."
+        exit 1
+    fi
 fi
 
 # Apply all infrastructure (including PostgreSQL if enabled)
@@ -312,11 +331,13 @@ echo -e "${GREEN}✓ ClusterIssuer applied${NC}\n"
 # Step 10: Deploy Dify with Helm
 echo -e "${YELLOW}Step 10: Deploying Dify with Helm...${NC}"
 echo "This will deploy Dify and all dependencies (Redis, PostgreSQL, etc.)"
-read -p "Continue? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Deployment cancelled."
-    exit 1
+if [ "$AUTO_APPROVE" != "true" ]; then
+    read -p "Continue? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Deployment cancelled."
+        exit 1
+    fi
 fi
 
 VALUES_ARG=""
