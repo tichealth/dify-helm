@@ -219,6 +219,31 @@ variable "postgres_open_firewall_all" {
   default     = true
 }
 
+# VNet configuration for PostgreSQL private access
+variable "create_vnet_for_postgres" {
+  description = "Create VNet and delegated subnet for PostgreSQL private access. When true, postgres_public_access is automatically set to false."
+  type        = bool
+  default     = false
+}
+
+variable "vnet_address_space" {
+  description = "Address space for the VNet (CIDR notation)"
+  type        = list(string)
+  default     = ["10.1.0.0/16"]
+}
+
+variable "postgres_subnet_address_prefixes" {
+  description = "Address prefixes for PostgreSQL delegated subnet (CIDR notation)"
+  type        = list(string)
+  default     = ["10.1.1.0/24"]
+}
+
+variable "management_subnet_address_prefixes" {
+  description = "Address prefixes for management/jumpbox subnet (for VMs to access PostgreSQL). Leave empty to skip creating this subnet."
+  type        = list(string)
+  default     = ["10.1.2.0/24"]
+}
+
 # Redis config
 variable "redis_chart_version" {
   type        = string

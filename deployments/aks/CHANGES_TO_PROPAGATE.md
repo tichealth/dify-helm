@@ -1,303 +1,173 @@
-# Changes to Propagate from Dev to Other Environments
+# Changes to Propagate from Dev to Test/Prod
 
-This document lists all changes made in the dev environment (`dify-helm/deployments/aks`) that should be propagated to test and production environments.
+This document lists the changes made in the dev environment that should be considered for propagation to test and production environments.
 
-## ✅ Changes Made in Dev Environment
-
-### 1. HTTPS/TLS Configuration
-
-**Files Modified:**
-- `values.yaml` - Added ingress configuration, changed service type to ClusterIP
-
-**Changes:**
-```yaml
-# Service Configuration
-service:
-  type: ClusterIP  # Changed from LoadBalancer - Ingress handles external access
-  port: 80
-
-# Ingress Configuration (HTTPS/TLS enabled)
-ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-  hosts:
-    - host: dify-dev.tichealth.com.au  # Update for each environment
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: dify-tls
-      hosts:
-        - dify-dev.tichealth.com.au  # Update for each environment
-```
-
-**Action Required:**
-- [ ] Add ingress configuration to test environment `values.yaml`
-- [ ] Add ingress configuration to prod environment `values.yaml`
-- [ ] Update hostnames for each environment (e.g., `dify-test.tichealth.com.au`, `dify-prod.tichealth.com.au`)
-- [ ] Ensure nginx-ingress controller is installed in test/prod clusters
-- [ ] Ensure cert-manager is installed in test/prod clusters
-- [ ] Create ClusterIssuers (letsencrypt-prod) in test/prod clusters
-
-**Cost Impact:** +$18-25/month per environment (nginx-ingress LoadBalancer)
+**Date:** 2026-01-24
 
 ---
 
-### 2. CoreDNS Configuration
+## ✅ **MUST Propagate** (Critical Infrastructure Changes)
 
-**Files Added:**
-- `coredns-patch.yaml` - CoreDNS configuration using external DNS servers
+### 1. **PostgreSQL External Configuration**
+- **What:** Using Azure PostgreSQL Flexible Server instead of in-cluster PostgreSQL
+- **Files:** `main.tf`, `terraform.tfvars`, `values.yaml`
+- **Status:** ✅ Already in test/prod examples
+- **Action:** Ensure test/prod use `use_azure_postgres = true`
 
-**Changes:**
-- CoreDNS forward DNS changed from `/etc/resolv.conf` to external DNS servers (8.8.8.8, 1.1.1.1)
-- This ensures faster DNS resolution and bypasses Azure DNS propagation delays
+### 2. **PostgreSQL Extensions Configuration**
+- **What:** Automatic enablement of `vector` and `uuid-ossp` extensions via Terraform
+- **Files:** `main.tf` (azure_extensions configuration + null_resource provisioners)
+- **Status:** ✅ Should be in all environments
+- **Action:** Ensure this code exists in test/prod Terraform
 
-**Action Required:**
-- [ ] Copy `coredns-patch.yaml` to test environment
-- [ ] Copy `coredns-patch.yaml` to prod environment
-- [ ] Apply CoreDNS patch in test cluster: `kubectl apply -f coredns-patch.yaml`
-- [ ] Apply CoreDNS patch in prod cluster: `kubectl apply -f coredns-patch.yaml`
-- [ ] Restart CoreDNS pods in test: `kubectl delete pods -n kube-system -l k8s-app=kube-dns`
-- [ ] Restart CoreDNS pods in prod: `kubectl delete pods -n kube-system -l k8s-app=kube-dns`
+### 3. **Dynamic PostgreSQL FQDN Injection**
+- **What:** `deploy.sh` automatically fetches PostgreSQL FQDN from Terraform and passes to Helm
+- **Files:** `deploy.sh`
+- **Status:** ✅ Should be in all environments
+- **Action:** Ensure `deploy.sh` has the `SET_POSTGRES` logic that uses `terraform output postgresql_fqdn`
 
-**Note:** This is optional but recommended for faster DNS resolution during certificate challenges.
+### 4. **Auto-Approve Flags**
+- **What:** `--auto-approve` flag for `deploy.sh` and `teardown.sh` to skip confirmation prompts
+- **Files:** `deploy.sh`, `teardown.sh`
+- **Status:** ✅ Should be in all environments
+- **Action:** Ensure both scripts support `--auto-approve` flag
 
----
+### 5. **PostgreSQL Private Subnet (NEW)**
+- **What:** VNet integration for PostgreSQL with private subnet access
+- **Files:** `main.tf`, `variables.tf`, `terraform.tfvars`
+- **Status:** ⚠️ **NEW - Should be enabled in test/prod**
+- **Action:** 
+  - Add to test/prod `terraform.tfvars`:
+    ```hcl
+    create_vnet_for_postgres = true
+    vnet_address_space = ["10.1.0.0/16"]  # Use different ranges for test/prod
+    postgres_subnet_address_prefixes = ["10.1.1.0/24"]
+    management_subnet_address_prefixes = ["10.1.2.0/24"]  # For jumpbox VMs
+    ```
+  - Ensure VNet peering code exists in `main.tf`
+  - **Note:** When `create_vnet_for_postgres = true`, `postgres_public_access` is automatically set to `false`
 
-### 3. Image Version Updates
-
-**Files Modified:**
-- `values.yaml` - Updated image tags
-
-**Changes:**
-```yaml
-image:
-  api:
-    tag: "1.11.2"  # Updated from 1.4.1
-  web:
-    tag: "1.11.2"  # Updated from 1.4.1
-  sandbox:
-    tag: "0.2.12"  # Updated from 0.2.1
-  pluginDaemon:
-    tag: "0.5.2-local"  # Updated from 0.1.1-local
-```
-
-**Action Required:**
-- [ ] Update image tags in test environment `values.yaml`
-- [ ] Update image tags in prod environment `values.yaml`
-- [ ] Test upgrades in test environment first
-- [ ] Follow upgrade procedures in [UPGRADE_GUIDE.md](./UPGRADE_GUIDE.md)
-
-**Benefits:**
-- Fixed timezone parameter bug (constant type variables)
-- Latest features and bug fixes
-- Plugin daemon compatibility improvements
-
----
-
-### 4. Storage Class Configuration
-
-**Files Modified:**
-- `values.yaml` - Updated storage classes for ReadWriteMany volumes
-
-**Changes:**
-```yaml
-api:
-  persistence:
-    persistentVolumeClaim:
-      storageClass: "azurefile"  # Changed from default (disk.csi.azure.com)
-
-pluginDaemon:
-  persistence:
-    persistentVolumeClaim:
-      storageClass: "azurefile"  # Changed from default (disk.csi.azure.com)
-```
-
-**Action Required:**
-- [ ] Update storage classes in test environment `values.yaml`
-- [ ] Update storage classes in prod environment `values.yaml`
-- [ ] Verify `azurefile` storage class exists in test/prod clusters
-- [ ] If PVCs already exist, may need to delete and recreate them
-
-**Note:** `azurefile` storage class supports `ReadWriteMany` access mode required by Dify API and Plugin Daemon.
+### 6. **Management Subnet for Database Access (NEW)**
+- **What:** Public subnet for jumpbox VMs to access PostgreSQL for dumps/maintenance
+- **Files:** `main.tf`, `variables.tf`, `terraform.tfvars`
+- **Status:** ⚠️ **NEW - Optional but recommended for test/prod**
+- **Action:**
+  - Add `management_subnet_address_prefixes = ["10.1.2.0/24"]` to test/prod `terraform.tfvars`
+  - Use different address ranges per environment (e.g., test: `10.2.2.0/24`, prod: `10.3.2.0/24`)
+  - See `MANAGEMENT_SUBNET_GUIDE.md` for usage instructions
+  - **Security Note:** For production, consider restricting SSH source IPs in NSG instead of allowing from "Internet"
 
 ---
 
-### 5. Documentation Updates
+## ⚠️ **CONDITIONAL** (Environment-Specific)
 
-**Files Added/Updated:**
-- `README.md` - Updated with HTTPS status
-- `HTTPS_SETUP_GUIDE.md` - Complete HTTPS setup guide (consolidated)
-- `COST_SUMMARY_2026-01-24.md` - Cost summary (Dev/Test/Prod)
-- `COST_OPTIMIZATIONS_2026-01-24.md` - Cost optimization recommendations
-- `INFRACOST.md` - Infracost usage
-- `CHANGELOG.md` - Deployment changes history
-- `DOCUMENTATION_INDEX.md` - Documentation navigation
-- `CHANGES_TO_PROPAGATE.md` - This file
+### 7. **VM Size Downgrade**
+- **What:** Changed from `Standard_D4s_v5` to `Standard_D2ads_v6` in dev
+- **Files:** `terraform.tfvars`
+- **Status:** ❌ **Dev only** - Test/Prod should keep appropriate sizes
+- **Action:** 
+  - Test: Keep `Standard_D2s_v5` (as in example)
+  - Prod: Keep `Standard_D4s_v5` (as in example)
+  - **Do NOT propagate** the dev VM size
 
-**Action Required:**
-- [ ] Copy documentation files to test/prod environment directories (if separate)
-- [ ] Update environment-specific details (hostnames, costs, etc.)
-- [ ] Review and adapt documentation for each environment's specific needs
+### 8. **CPU Resource Adjustments**
+- **What:** Removed CPU limits, reduced CPU requests to fit 2 vCPU node
+- **Files:** `values.yaml`
+- **Status:** ❌ **Dev only** - Test/Prod may need different resources
+- **Action:**
+  - Review CPU requests/limits based on node sizes in test/prod
+  - Test (2 vCPU): May need similar adjustments
+  - Prod (4+ vCPU): Can use higher requests/limits
+  - **Do NOT blindly copy** dev resource values
 
----
+### 9. **SSL/TLS Configuration**
+- **What:** `postgres_require_secure_transport = false` in dev
+- **Files:** `terraform.tfvars`
+- **Status:** ❌ **Dev only** - Test/Prod should have SSL enabled
+- **Action:**
+  - Test: `postgres_require_secure_transport = true` ✅ (already in example)
+  - Prod: `postgres_require_secure_transport = true` ✅ (already in example)
+  - **Do NOT disable SSL** in test/prod
 
-## 📋 Propagation Checklist
-
-### Test Environment
-
-#### Infrastructure
-- [ ] Install nginx-ingress controller
-- [ ] Install cert-manager
-- [ ] Create ClusterIssuers (letsencrypt-prod, letsencrypt-staging)
-- [ ] Apply CoreDNS patch (`coredns-patch.yaml`)
-- [ ] Verify `azurefile` storage class exists
-
-#### Application Configuration
-- [ ] Update `values.yaml` with HTTPS/ingress configuration
-- [ ] Update `values.yaml` with image versions (1.11.2, 0.5.2-local, 0.2.12)
-- [ ] Update `values.yaml` with storage class (`azurefile`)
-- [ ] Update hostname to `dify-test.tichealth.com.au` (or appropriate domain)
-- [ ] Configure DNS A record for test domain
-
-#### Deployment
-- [ ] Deploy/upgrade Helm release with updated values
-- [ ] Verify certificate issuance
-- [ ] Test HTTPS access
-- [ ] Verify all pods are running correctly
-
-#### Documentation
-- [ ] Copy relevant documentation files
-- [ ] Update environment-specific details
+### 10. **Firewall Rules**
+- **What:** `postgres_open_firewall_all = true` in dev
+- **Files:** `terraform.tfvars`
+- **Status:** ❌ **Dev only** - Test/Prod should restrict firewall
+- **Action:**
+  - Test: `postgres_open_firewall_all = true` (acceptable for test) or `false` with specific rules
+  - Prod: `postgres_open_firewall_all = false` ✅ (already in example) + add specific firewall rules
+  - **Do NOT open firewall to all IPs** in prod
 
 ---
 
-### Production Environment
+## 📋 **Checklist for Test/Prod Deployment**
 
-#### Infrastructure
-- [ ] Install nginx-ingress controller
-- [ ] Install cert-manager
-- [ ] Create ClusterIssuers (letsencrypt-prod only - no staging)
-- [ ] Apply CoreDNS patch (`coredns-patch.yaml`)
-- [ ] Verify `azurefile` storage class exists
+When deploying to test/prod, ensure:
 
-#### Application Configuration
-- [ ] Update `values.yaml` with HTTPS/ingress configuration
-- [ ] Update `values.yaml` with image versions (1.11.2, 0.5.2-local, 0.2.12)
-- [ ] Update `values.yaml` with storage class (`azurefile`)
-- [ ] Update hostname to `dify-prod.tichealth.com.au` (or appropriate domain)
-- [ ] Configure DNS A record for production domain
-- [ ] Review and adjust resource limits/requests for production workload
-
-#### Deployment
-- [ ] **Test in test environment first** ✅
-- [ ] Plan maintenance window for production upgrade
-- [ ] Deploy/upgrade Helm release with updated values
-- [ ] Verify certificate issuance
-- [ ] Test HTTPS access
-- [ ] Verify all pods are running correctly
-- [ ] Monitor for 24-48 hours after deployment
-
-#### Documentation
-- [ ] Copy relevant documentation files
-- [ ] Update environment-specific details
-- [ ] Document production-specific configurations
+- [ ] `use_azure_postgres = true` in `terraform.tfvars`
+- [ ] `create_vnet_for_postgres = true` in `terraform.tfvars` (NEW)
+- [ ] `management_subnet_address_prefixes` configured (optional but recommended)
+- [ ] VNet address spaces are unique per environment (avoid conflicts)
+- [ ] `postgres_require_secure_transport = true` in test/prod
+- [ ] `postgres_open_firewall_all = false` in prod (or specific rules)
+- [ ] PostgreSQL extensions code exists in `main.tf`
+- [ ] `deploy.sh` has dynamic FQDN injection logic
+- [ ] `deploy.sh` and `teardown.sh` support `--auto-approve`
+- [ ] VM sizes are appropriate for each environment
+- [ ] CPU resources in `values.yaml` match node sizes
+- [ ] Strong passwords are used (not dev passwords)
 
 ---
 
-## 🔄 Recommended Propagation Order
+## 🔄 **Migration Notes**
 
-1. **Test Environment First** (Low risk, validates changes)
-   - Apply all changes
-   - Test thoroughly
-   - Monitor for 1-2 weeks
+### When Enabling Private Subnet in Existing Environments
 
-2. **Production Environment** (After test validation)
-   - Apply all changes
-   - Use maintenance window
-   - Monitor closely for 24-48 hours
+If you have an existing test/prod environment with public PostgreSQL access:
 
----
+1. **Backup:** Ensure database backups are current
+2. **Plan:** Schedule maintenance window (PostgreSQL will be recreated with VNet)
+3. **Update:** Set `create_vnet_for_postgres = true` in `terraform.tfvars`
+4. **Deploy:** Run `terraform apply` (this will recreate PostgreSQL in private subnet)
+5. **Verify:** Test connectivity from AKS pods
+6. **Update DNS:** If using private FQDN, update connection strings
 
-## ⚠️ Important Notes
-
-### HTTPS Configuration
-- Each environment needs its own nginx-ingress LoadBalancer (~$18-25/month each)
-- Each environment needs its own DNS A record
-- Certificates are issued per domain (separate for dev/test/prod)
-
-### Image Versions
-- Always test upgrades in test environment first
-- Follow upgrade procedures in [UPGRADE_GUIDE.md](./UPGRADE_GUIDE.md)
-- Have rollback plan ready
-
-### Storage Classes
-- If PVCs already exist with different storage class, they may need to be deleted and recreated
-- **Warning**: This will cause data loss if not backed up first
-- Consider backing up data before changing storage classes
-
-### CoreDNS Patch
-- This is optional but recommended
-- Improves DNS resolution speed
-- Helps with certificate challenges
-- Can be applied without downtime (rolling restart)
+**Note:** Enabling VNet integration requires recreating the PostgreSQL server. Plan accordingly.
 
 ---
 
-## 📝 Environment-Specific Considerations
+## 📝 **Files Modified in Dev**
 
-### Test Environment
-- Can use `letsencrypt-staging` ClusterIssuer for testing
-- Lower resource requirements acceptable
-- Can tolerate brief downtime during upgrades
+### Terraform Files:
+- `main.tf` - Added VNet, subnet, Private DNS Zone, VNet peering, PostgreSQL extensions
+- `variables.tf` - Added VNet configuration variables
+- `terraform.tfvars` - Enabled VNet, configured address spaces
 
-### Production Environment
-- **Must** use `letsencrypt-prod` ClusterIssuer (trusted certificates)
-- Higher resource requirements
-- Plan maintenance windows for upgrades
-- Implement monitoring and alerting
-- Have rollback procedures ready
+### Scripts:
+- `deploy.sh` - Added `--auto-approve` flag, dynamic PostgreSQL FQDN injection
+- `teardown.sh` - Added `--auto-approve` flag
 
----
-
-## 🔗 Related Documentation
-
-- [HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md) - Complete HTTPS setup instructions
-- [UPGRADE_GUIDE.md](./UPGRADE_GUIDE.md) - Version upgrade procedures
-- [COST_SUMMARY_2026-01-24.md](./COST_SUMMARY_2026-01-24.md) - Cost summary (Dev/Test/Prod)
-- [COST_OPTIMIZATIONS_2026-01-24.md](./COST_OPTIMIZATIONS_2026-01-24.md) - Cost optimizations
-- [INFRACOST.md](./INFRACOST.md) - Exact estimates
-- [README.md](./README.md) - Main documentation
+### Helm Values:
+- `values.yaml` - Removed CPU limits, adjusted CPU requests, external PostgreSQL config
 
 ---
 
-## ✅ Verification Steps
+## 🎯 **Summary**
 
-After propagating changes to each environment:
+**Must Propagate:**
+1. PostgreSQL external configuration ✅
+2. PostgreSQL extensions automation ✅
+3. Dynamic FQDN injection ✅
+4. Auto-approve flags ✅
+5. **Private subnet configuration** ⚠️ **NEW**
+6. **Management subnet** ⚠️ **NEW (optional but recommended)**
 
-```bash
-# 1. Check certificate status
-kubectl get certificate -n dify
-
-# 2. Check ingress
-kubectl get ingress -n dify
-
-# 3. Check all pods
-kubectl get pods -n dify
-
-# 4. Test HTTPS
-curl -I https://dify-<env>.tichealth.com.au
-
-# 5. Check DNS resolution from cluster
-kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup dify-<env>.tichealth.com.au
-```
+**Do NOT Propagate:**
+- Dev VM size (Standard_D2ads_v6)
+- Dev CPU resource values
+- SSL disabled setting
+- Open firewall to all IPs (prod)
 
 ---
 
-**Last Updated:** January 13, 2026  
-**Status:** Ready for propagation to test and production environments
+**Last Updated:** 2026-01-24

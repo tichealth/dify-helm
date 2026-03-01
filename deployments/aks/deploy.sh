@@ -25,10 +25,24 @@ RELEASE_NAME="dify"
 # Parse arguments
 AUTO_APPROVE=false
 VALUES_FILE="$SCRIPT_DIR/values.yaml"
+DEPLOY_MODE="all"  # Default: deploy everything
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --auto-approve)
             AUTO_APPROVE=true
+            shift
+            ;;
+        --db)
+            DEPLOY_MODE="db"
+            shift
+            ;;
+        --app)
+            DEPLOY_MODE="app"
+            shift
+            ;;
+        --all)
+            DEPLOY_MODE="all"
             shift
             ;;
         *)
@@ -45,6 +59,27 @@ CERT_EMAIL="${CERT_EMAIL:-vivek.narayanan@tichealth.com.au}"
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Dify Hybrid Deployment (Terraform + Helm)${NC}"
 echo -e "${GREEN}========================================${NC}\n"
+
+# Display deployment mode
+case $DEPLOY_MODE in
+    db)
+        echo -e "${YELLOW}Deployment Mode: DATABASE ONLY${NC}"
+        echo "  - Will deploy/update: PostgreSQL, VNet, Management Subnet"
+        echo "  - Will skip: AKS, Helm deployments"
+        echo ""
+        ;;
+    app)
+        echo -e "${YELLOW}Deployment Mode: APPLICATION ONLY${NC}"
+        echo "  - Will deploy/update: Helm charts (ingress, cert-manager, Dify)"
+        echo "  - Will skip: Terraform infrastructure (assumes AKS/PostgreSQL exist)"
+        echo ""
+        ;;
+    all)
+        echo -e "${YELLOW}Deployment Mode: FULL DEPLOYMENT${NC}"
+        echo "  - Will deploy/update: All infrastructure and applications"
+        echo ""
+        ;;
+esac
 
 # Step 0: Check prerequisites
 echo -e "${YELLOW}Step 0: Checking prerequisites...${NC}"
@@ -173,50 +208,98 @@ terraform init
 echo -e "${GREEN}✓ Terraform initialized${NC}\n"
 
 # Step 2: Create/Update Infrastructure
-echo -e "${YELLOW}Step 2: Creating/Updating AKS infrastructure...${NC}"
-echo "This will create/update the AKS cluster and related resources."
-if [ "$AUTO_APPROVE" != "true" ]; then
-    read -p "Continue? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Deployment cancelled."
+if [ "$DEPLOY_MODE" != "app" ]; then
+    if [ "$DEPLOY_MODE" == "db" ]; then
+        echo -e "${YELLOW}Step 2: Creating/Updating Database infrastructure...${NC}"
+        echo "This will create/update PostgreSQL, VNet, and related database resources."
+        echo "AKS resources will be skipped."
+    else
+        echo -e "${YELLOW}Step 2: Creating/Updating infrastructure...${NC}"
+        echo "This will create/update the AKS cluster, PostgreSQL, and related resources."
+    fi
+    
+    if [ "$AUTO_APPROVE" != "true" ]; then
+        read -p "Continue? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Deployment cancelled."
+            exit 1
+        fi
+    fi
+
+    if [ "$DEPLOY_MODE" == "db" ]; then
+        # Deploy only database-related resources
+        echo "Applying Terraform for database resources only..."
+        terraform apply -auto-approve \
+            -target=azurerm_virtual_network.postgres \
+            -target=azurerm_subnet.postgres \
+            -target=azurerm_subnet.management \
+            -target=azurerm_private_dns_zone.postgres \
+            -target=azurerm_private_dns_zone_virtual_network_link.postgres \
+            -target=azurerm_private_dns_zone_virtual_network_link.aks \
+            -target=azurerm_network_security_group.management \
+            -target=azurerm_network_security_rule.management_ssh \
+            -target=azurerm_network_security_rule.management_rdp \
+            -target=azurerm_network_security_rule.management_to_postgres \
+            -target=azurerm_subnet_network_security_group_association.management \
+            -target=azurerm_postgresql_flexible_server.pg \
+            -target=azurerm_postgresql_flexible_server_database.db \
+            -target=azurerm_postgresql_flexible_server_database.plugin_db \
+            -target=azurerm_postgresql_flexible_server_configuration.require_secure_transport \
+            -target=azurerm_postgresql_flexible_server_configuration.azure_extensions \
+            -target=null_resource.create_extensions_dify \
+            -target=null_resource.create_extensions_plugin \
+            -target=azurerm_virtual_network_peering.postgres_to_aks \
+            -target=azurerm_virtual_network_peering.aks_to_postgres \
+            2>&1 | tee terraform-apply.log
+    else
+        # Deploy all infrastructure
+        terraform apply -auto-approve 2>&1 | tee terraform-apply.log
+    fi
+
+    echo -e "${GREEN}✓ Infrastructure created/updated${NC}\n"
+else
+    echo -e "${YELLOW}Step 2: Skipping infrastructure deployment (--app mode)${NC}"
+    echo "Assuming AKS and PostgreSQL already exist."
+    echo ""
+fi
+
+# Step 3: Get AKS credentials (skip if --db only)
+if [ "$DEPLOY_MODE" != "db" ]; then
+    echo -e "${YELLOW}Step 3: Getting AKS credentials...${NC}"
+    CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
+    RG_NAME=$(terraform output -raw resource_group_name)
+
+    if [ -z "$CLUSTER_NAME" ] || [ -z "$RG_NAME" ]; then
+        echo -e "${RED}Error: Could not get cluster name or resource group from Terraform outputs${NC}"
+        echo "If using --app mode, ensure Terraform state exists and AKS is already deployed."
         exit 1
     fi
+
+    echo "Cluster: $CLUSTER_NAME"
+    echo "Resource Group: $RG_NAME"
+
+    az aks get-credentials \
+        --resource-group "$RG_NAME" \
+        --name "$CLUSTER_NAME" \
+        --overwrite-existing
+
+    echo -e "${GREEN}✓ Credentials retrieved${NC}\n"
+else
+    echo -e "${YELLOW}Step 3: Skipping AKS credentials (--db mode)${NC}\n"
+    # Set dummy values to prevent errors in later steps that check these
+    CLUSTER_NAME=""
+    RG_NAME=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
 fi
 
-# Apply all infrastructure (including PostgreSQL if enabled)
-# Using -target only for AKS resources to avoid recreating everything unnecessarily
-terraform apply -auto-approve 2>&1 | tee terraform-apply.log
+# Wait a moment for credentials to be written and API server to be ready (skip if --db only)
+if [ "$DEPLOY_MODE" != "db" ]; then
+    echo "Waiting for API server to be ready (cluster was just created)..."
+    echo "This can take 2-5 minutes for a newly created cluster..."
+    sleep 30
 
-echo -e "${GREEN}✓ Infrastructure created/updated${NC}\n"
-
-# Step 3: Get AKS credentials
-echo -e "${YELLOW}Step 3: Getting AKS credentials...${NC}"
-CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
-RG_NAME=$(terraform output -raw resource_group_name)
-
-if [ -z "$CLUSTER_NAME" ] || [ -z "$RG_NAME" ]; then
-    echo -e "${RED}Error: Could not get cluster name or resource group from Terraform outputs${NC}"
-    exit 1
-fi
-
-echo "Cluster: $CLUSTER_NAME"
-echo "Resource Group: $RG_NAME"
-
-az aks get-credentials \
-    --resource-group "$RG_NAME" \
-    --name "$CLUSTER_NAME" \
-    --overwrite-existing
-
-echo -e "${GREEN}✓ Credentials retrieved${NC}\n"
-
-# Wait a moment for credentials to be written and API server to be ready
-echo "Waiting for API server to be ready (cluster was just created)..."
-echo "This can take 2-5 minutes for a newly created cluster..."
-sleep 30
-
-# Step 4: Verify cluster connectivity (with retries)
-echo -e "${YELLOW}Step 4: Verifying cluster connectivity...${NC}"
+    # Step 4: Verify cluster connectivity (with retries)
+    echo -e "${YELLOW}Step 4: Verifying cluster connectivity...${NC}"
 MAX_RETRIES=60  # Increased to 10 minutes total
 RETRY_COUNT=0
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
@@ -232,70 +315,74 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     sleep 10
 done
 
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    echo -e "${RED}Error: Cannot connect to cluster after 10 minutes${NC}"
-    echo ""
-    echo "Troubleshooting steps:"
-    echo "1. Check cluster status:"
-    echo "   az aks show --resource-group $RG_NAME --name $CLUSTER_NAME --query provisioningState"
-    echo ""
-    echo "2. Try connecting manually:"
-    echo "   kubectl cluster-info"
-    echo ""
-    echo "3. If cluster is ready but kubectl fails, check credentials:"
-    echo "   az aks get-credentials --resource-group $RG_NAME --name $CLUSTER_NAME --overwrite-existing"
-    echo ""
-    echo "4. Once connected, continue deployment manually:"
-    echo "   helm repo add dify https://borispolonsky.github.io/dify-helm && helm repo update"
-    echo "   helm upgrade --install dify dify/dify -f values.yaml --namespace dify --create-namespace --timeout 20m --atomic --wait"
-    exit 1
-fi
-
-# Step 5: Add Helm repository
-echo -e "${YELLOW}Step 5: Adding Helm repository...${NC}"
-if helm repo list | grep -q "^${HELM_REPO_NAME}"; then
-    echo "  Repository already exists, updating..."
-    helm repo update "$HELM_REPO_NAME"
+    if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+        echo -e "${RED}Error: Cannot connect to cluster after 10 minutes${NC}"
+        echo ""
+        echo "Troubleshooting steps:"
+        echo "1. Check cluster status:"
+        echo "   az aks show --resource-group $RG_NAME --name $CLUSTER_NAME --query provisioningState"
+        echo ""
+        echo "2. Try connecting manually:"
+        echo "   kubectl cluster-info"
+        echo ""
+        echo "3. If cluster is ready but kubectl fails, check credentials:"
+        echo "   az aks get-credentials --resource-group $RG_NAME --name $CLUSTER_NAME --overwrite-existing"
+        echo ""
+        echo "4. Once connected, continue deployment manually:"
+        echo "   helm repo add dify https://borispolonsky.github.io/dify-helm && helm repo update"
+        echo "   helm upgrade --install dify dify/dify -f values.yaml --namespace dify --create-namespace --timeout 20m --atomic --wait"
+        exit 1
+    fi
 else
-    echo "  Adding repository: $HELM_REPO_URL"
-    helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL"
-    helm repo update
+    echo -e "${YELLOW}Step 4: Skipping cluster connectivity check (--db mode)${NC}\n"
 fi
 
-echo -e "${GREEN}✓ Helm repository ready${NC}\n"
+# Step 5: Add Helm repository (skip if --db only)
+if [ "$DEPLOY_MODE" != "db" ]; then
+    echo -e "${YELLOW}Step 5: Adding Helm repository...${NC}"
+    if helm repo list | grep -q "^${HELM_REPO_NAME}"; then
+        echo "  Repository already exists, updating..."
+        helm repo update "$HELM_REPO_NAME"
+    else
+        echo "  Adding repository: $HELM_REPO_URL"
+        helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL"
+        helm repo update
+    fi
 
-# Step 6: Create namespace if it doesn't exist
-echo -e "${YELLOW}Step 6: Ensuring namespace exists...${NC}"
-kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-echo -e "${GREEN}✓ Namespace ready${NC}\n"
+    echo -e "${GREEN}✓ Helm repository ready${NC}\n"
 
-# Step 7: Install nginx-ingress controller
-echo -e "${YELLOW}Step 7: Installing nginx-ingress...${NC}"
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
-helm repo update >/dev/null 2>&1
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx \
-  --create-namespace \
-  --set controller.service.type=LoadBalancer \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
-  --wait --timeout 5m
-echo -e "${GREEN}✓ nginx-ingress installed${NC}\n"
+    # Step 6: Create namespace if it doesn't exist
+    echo -e "${YELLOW}Step 6: Ensuring namespace exists...${NC}"
+    kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    echo -e "${GREEN}✓ Namespace ready${NC}\n"
 
-# Step 8: Install cert-manager
-echo -e "${YELLOW}Step 8: Installing cert-manager...${NC}"
-helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
-helm repo update >/dev/null 2>&1
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.crds.yaml
-helm upgrade --install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --version v1.13.3 \
-  --wait --timeout 5m
-echo -e "${GREEN}✓ cert-manager installed${NC}\n"
+    # Step 7: Install nginx-ingress controller
+    echo -e "${YELLOW}Step 7: Installing nginx-ingress...${NC}"
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
+    helm repo update >/dev/null 2>&1
+    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+      --namespace ingress-nginx \
+      --create-namespace \
+      --set controller.service.type=LoadBalancer \
+      --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+      --wait --timeout 5m
+    echo -e "${GREEN}✓ nginx-ingress installed${NC}\n"
 
-# Step 9: Create ClusterIssuer (Let's Encrypt)
-echo -e "${YELLOW}Step 9: Creating ClusterIssuer...${NC}"
-kubectl apply -f - <<EOF
+    # Step 8: Install cert-manager
+    echo -e "${YELLOW}Step 8: Installing cert-manager...${NC}"
+    helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+    helm repo update >/dev/null 2>&1
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.crds.yaml
+    helm upgrade --install cert-manager jetstack/cert-manager \
+      --namespace cert-manager \
+      --create-namespace \
+      --version v1.13.3 \
+      --wait --timeout 5m
+    echo -e "${GREEN}✓ cert-manager installed${NC}\n"
+
+    # Step 9: Create ClusterIssuer (Let's Encrypt)
+    echo -e "${YELLOW}Step 9: Creating ClusterIssuer...${NC}"
+    kubectl apply -f - <<EOF
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -326,125 +413,145 @@ spec:
         ingress:
           class: nginx
 EOF
-echo -e "${GREEN}✓ ClusterIssuer applied${NC}\n"
+    echo -e "${GREEN}✓ ClusterIssuer applied${NC}\n"
 
-# Step 10: Deploy Dify with Helm
-echo -e "${YELLOW}Step 10: Deploying Dify with Helm...${NC}"
-echo "This will deploy Dify and all dependencies (Redis, PostgreSQL, etc.)"
-if [ "$AUTO_APPROVE" != "true" ]; then
-    read -p "Continue? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Deployment cancelled."
-        exit 1
+    # Step 10: Deploy Dify with Helm
+    echo -e "${YELLOW}Step 10: Deploying Dify with Helm...${NC}"
+    echo "This will deploy Dify and all dependencies (Redis, PostgreSQL, etc.)"
+    if [ "$AUTO_APPROVE" != "true" ]; then
+        read -p "Continue? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Deployment cancelled."
+            exit 1
+        fi
     fi
-fi
 
-VALUES_ARG=""
-if [ -f "$VALUES_FILE" ]; then
-    VALUES_ARG="-f $VALUES_FILE"
-    echo "Using values file: $VALUES_FILE"
-else
-    echo "No values file specified, using chart defaults"
-fi
+    VALUES_ARG=""
+    if [ -f "$VALUES_FILE" ]; then
+        VALUES_ARG="-f $VALUES_FILE"
+        echo "Using values file: $VALUES_FILE"
+    else
+        echo "No values file specified, using chart defaults"
+    fi
 
-# When using Azure PostgreSQL, pass FQDN from Terraform so we never hardcode it
-SET_POSTGRES=""
-POSTGRES_FQDN=$(cd "$TF_DIR" && terraform output -raw postgresql_fqdn 2>/dev/null || true)
-if [[ -n "$POSTGRES_FQDN" && "$POSTGRES_FQDN" != *"N/A"* ]]; then
-    SET_POSTGRES="--set externalPostgres.address=$POSTGRES_FQDN"
-    echo "Using Azure PostgreSQL FQDN from Terraform: $POSTGRES_FQDN"
-fi
+    # When using Azure PostgreSQL, pass FQDN from Terraform so we never hardcode it
+    SET_POSTGRES=""
+    POSTGRES_FQDN=$(cd "$TF_DIR" && terraform output -raw postgresql_fqdn 2>/dev/null || true)
+    if [[ -n "$POSTGRES_FQDN" && "$POSTGRES_FQDN" != *"N/A"* ]]; then
+        SET_POSTGRES="--set externalPostgres.address=$POSTGRES_FQDN"
+        echo "Using Azure PostgreSQL FQDN from Terraform: $POSTGRES_FQDN"
+    fi
 
-helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
-    --namespace "$NAMESPACE" \
-    --create-namespace \
-    --timeout 20m \
-    --atomic \
-    --wait \
-    $VALUES_ARG $SET_POSTGRES
+    helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
+        --namespace "$NAMESPACE" \
+        --create-namespace \
+        --timeout 20m \
+        --atomic \
+        --wait \
+        $VALUES_ARG $SET_POSTGRES
 
-echo -e "${GREEN}✓ Dify deployed${NC}\n"
+    echo -e "${GREEN}✓ Dify deployed${NC}\n"
 
-# Step 11: Wait for services to be ready
-echo -e "${YELLOW}Step 11: Waiting for services to be ready...${NC}"
-kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true
-kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-web -n "$NAMESPACE" || true
+    # Step 11: Wait for services to be ready
+    echo -e "${YELLOW}Step 11: Waiting for services to be ready...${NC}"
+    kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true
+    kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-web -n "$NAMESPACE" || true
 
-echo -e "${GREEN}✓ Services are ready${NC}\n"
+    echo -e "${GREEN}✓ Services are ready${NC}\n"
 
-# Step 12: Update NSG rules for LoadBalancer access
-echo -e "${YELLOW}Step 12: Updating NSG rules for LoadBalancer...${NC}"
-if [ -f "$SCRIPT_DIR/fix-nsg-rules.sh" ]; then
-    chmod +x "$SCRIPT_DIR/fix-nsg-rules.sh"
-    "$SCRIPT_DIR/fix-nsg-rules.sh" || echo -e "${YELLOW}⚠ NSG rule update failed${NC}"
-else
-    echo -e "${YELLOW}⚠ fix-nsg-rules.sh not found, skipping${NC}"
-fi
-echo ""
+    # Step 12: Update NSG rules for LoadBalancer access
+    echo -e "${YELLOW}Step 12: Updating NSG rules for LoadBalancer...${NC}"
+    if [ -f "$SCRIPT_DIR/fix-nsg-rules.sh" ]; then
+        chmod +x "$SCRIPT_DIR/fix-nsg-rules.sh"
+        "$SCRIPT_DIR/fix-nsg-rules.sh" || echo -e "${YELLOW}⚠ NSG rule update failed${NC}"
+    else
+        echo -e "${YELLOW}⚠ fix-nsg-rules.sh not found, skipping${NC}"
+    fi
+    echo ""
 
-# Step 13: Display deployment status
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Deployment Complete!${NC}"
-echo -e "${GREEN}========================================${NC}\n"
+    # Step 13: Display deployment status
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}Deployment Complete!${NC}"
+    echo -e "${GREEN}========================================${NC}\n"
 
-echo "Cluster: $CLUSTER_NAME"
-echo "Namespace: $NAMESPACE"
-echo "Release: $RELEASE_NAME"
-echo ""
+    echo "Cluster: $CLUSTER_NAME"
+    echo "Namespace: $NAMESPACE"
+    echo "Release: $RELEASE_NAME"
+    echo ""
 
-echo "Pods:"
-kubectl get pods -n "$NAMESPACE"
-echo ""
+    echo "Pods:"
+    kubectl get pods -n "$NAMESPACE"
+    echo ""
 
-echo "Services:"
-kubectl get svc -n "$NAMESPACE"
-echo ""
+    echo "Services:"
+    kubectl get svc -n "$NAMESPACE"
+    echo ""
 
-echo "To get service URLs:"
-echo "  kubectl get svc -n $NAMESPACE"
-echo ""
+    echo "To get service URLs:"
+    echo "  kubectl get svc -n $NAMESPACE"
+    echo ""
 
-# Step 14: Get LoadBalancer IP address (ingress)
-echo -e "${YELLOW}Step 14: Getting LoadBalancer IP address...${NC}"
-LB_IP=""
-SERVICE_NAMESPACE="ingress-nginx"
-SERVICE_NAME="ingress-nginx-controller"
+    # Step 14: Get LoadBalancer IP address (ingress)
+    echo -e "${YELLOW}Step 14: Getting LoadBalancer IP address...${NC}"
+    LB_IP=""
+    SERVICE_NAMESPACE="ingress-nginx"
+    SERVICE_NAME="ingress-nginx-controller"
 
-echo "Waiting for LoadBalancer IP to be assigned (this may take 1-2 minutes)..."
-MAX_WAIT=120  # 2 minutes
-WAIT_COUNT=0
-while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-    LB_IP=$(kubectl get svc -n "$SERVICE_NAMESPACE" "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    echo "Waiting for LoadBalancer IP to be assigned (this may take 1-2 minutes)..."
+    MAX_WAIT=120  # 2 minutes
+    WAIT_COUNT=0
+    while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+        LB_IP=$(kubectl get svc -n "$SERVICE_NAMESPACE" "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ] && [ "$LB_IP" != "<pending>" ]; then
+            break
+        fi
+        sleep 5
+        WAIT_COUNT=$((WAIT_COUNT + 5))
+        if [ $((WAIT_COUNT % 30)) -eq 0 ]; then
+            echo "  Still waiting for IP... ($WAIT_COUNT seconds elapsed)"
+        fi
+    done
+
     if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ] && [ "$LB_IP" != "<pending>" ]; then
-        break
+        echo -e "${GREEN}✓ LoadBalancer IP obtained${NC}\n"
+        echo -e "${GREEN}========================================${NC}"
+        echo -e "${GREEN}LoadBalancer IP Address${NC}"
+        echo -e "${GREEN}========================================${NC}"
+        echo ""
+        echo "IP Address: $LB_IP"
+        echo ""
+        echo "Access URLs:"
+        echo "  HTTP:  http://$LB_IP"
+        echo "  HTTPS: https://dify-dev.tichealth.com.au (after DNS configured)"
+        echo ""
+        echo "Next Steps:"
+        echo "  1. Wait 1-2 minutes for NSG rules to propagate"
+        echo "  2. Configure DNS: dify-dev.tichealth.com.au -> $LB_IP"
+        echo "  3. Wait for cert-manager to issue TLS, then test HTTPS"
+        echo ""
+    else
+        echo -e "${YELLOW}⚠ LoadBalancer IP is still pending${NC}"
+        echo "Check status with: kubectl get svc -n $SERVICE_NAMESPACE $SERVICE_NAME"
+        echo ""
     fi
-    sleep 5
-    WAIT_COUNT=$((WAIT_COUNT + 5))
-    if [ $((WAIT_COUNT % 30)) -eq 0 ]; then
-        echo "  Still waiting for IP... ($WAIT_COUNT seconds elapsed)"
-    fi
-done
-
-if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ] && [ "$LB_IP" != "<pending>" ]; then
-    echo -e "${GREEN}✓ LoadBalancer IP obtained${NC}\n"
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}LoadBalancer IP Address${NC}"
-    echo -e "${GREEN}========================================${NC}"
-    echo ""
-    echo "IP Address: $LB_IP"
-    echo ""
-    echo "Access URLs:"
-    echo "  HTTP:  http://$LB_IP"
-    echo "  HTTPS: https://dify-dev.tichealth.com.au (after DNS configured)"
-    echo ""
-    echo "Next Steps:"
-    echo "  1. Wait 1-2 minutes for NSG rules to propagate"
-    echo "  2. Configure DNS: dify-dev.tichealth.com.au -> $LB_IP"
-    echo "  3. Wait for cert-manager to issue TLS, then test HTTPS"
-    echo ""
 else
-    echo -e "${YELLOW}⚠ LoadBalancer IP is still pending${NC}"
-    echo "Check status with: kubectl get svc -n $SERVICE_NAMESPACE $SERVICE_NAME"
+    # --db mode: Show database information
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}Database Deployment Complete!${NC}"
+    echo -e "${GREEN}========================================${NC}\n"
+    
+    POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn 2>/dev/null || echo "N/A")
+    VNET_ID=$(terraform output -raw vnet_id 2>/dev/null || echo "N/A")
+    MANAGEMENT_SUBNET_ID=$(terraform output -raw management_subnet_id 2>/dev/null || echo "N/A")
+    
+    echo "PostgreSQL FQDN: $POSTGRES_FQDN"
+    echo "VNet ID: $VNET_ID"
+    if [ "$MANAGEMENT_SUBNET_ID" != "N/A" ]; then
+        echo "Management Subnet ID: $MANAGEMENT_SUBNET_ID"
+        echo ""
+        echo "You can now create VMs in the management subnet to access PostgreSQL."
+        echo "See MANAGEMENT_SUBNET_GUIDE.md for instructions."
+    fi
     echo ""
 fi
