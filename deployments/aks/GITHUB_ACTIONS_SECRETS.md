@@ -1,35 +1,32 @@
 # GitHub Actions: Required Secrets
 
-For the **Deploy or teardown Dify on AKS** workflow (`.github/workflows/deploy-aks.yml`), add these **repository secrets** in GitHub: **Settings → Secrets and variables → Actions → New repository secret**.
+For the **Deploy or teardown Dify on AKS** workflow (`.github/workflows/deploy-aks.yml`), configure **Variables** and **Secrets** in GitHub: **Settings → Secrets and variables → Actions**.
 
-**Passwords and keys are not stored in the repo.** Environment tfvars (`lite-prod.tfvars`, `prod-full.tfvars`, etc.) do not contain any secret values. The workflow passes them to Terraform as `TF_VAR_*` from these secrets.
+**Passwords and keys are not stored in the repo.** Environment tfvars do not contain secret values. The workflow passes them to Terraform as `TF_VAR_*` from **Variables** (identifiers, e.g. account name) and **Secrets** (passwords, keys).
 
 ## Azure (service principal)
 
-| Secret name | Description |
-|-------------|-------------|
-| `ARM_CLIENT_ID` | Azure AD app (service principal) Application (client) ID |
-| `ARM_CLIENT_SECRET` | Service principal client secret |
-| `ARM_SUBSCRIPTION_ID` | Azure subscription ID |
-| `ARM_TENANT_ID` | Azure AD tenant ID |
+| Name | Description | Store as |
+|------|-------------|----------|
+| `ARM_CLIENT_ID` | Application (client) ID of the service principal | **Variable** |
+| `ARM_TENANT_ID` | Directory (tenant) ID of the Azure AD tenant | **Variable** |
+| `ARM_SUBSCRIPTION_ID` | Azure subscription ID | **Variable** |
+| `ARM_CLIENT_SECRET` | Client secret **value** (the password) | **Secret** |
 
 Create a service principal with Contributor (or appropriate) scope on the subscription or resource group used for Dify. [Azure: Create service principal](https://learn.microsoft.com/en-us/cli/azure/ad/sp/create-for-rbac).
 
 ### Fix: "Not all values are present. Ensure 'client-id' and 'tenant-id' are supplied"
 
-This error means the Azure login step is missing one or more of the four service principal secrets. Do the following:
+This error means the Azure login step is missing one or more of the four values. Do the following:
 
 1. **In GitHub:** Repo → **Settings** → **Secrets and variables** → **Actions**.
-2. **Add or fix these repository secrets** (names must be exact):
-   - `ARM_CLIENT_ID` — Application (client) ID of the service principal
-   - `ARM_TENANT_ID` — Directory (tenant) ID of the Azure AD tenant
-   - `ARM_SUBSCRIPTION_ID` — Azure subscription ID
-   - `ARM_CLIENT_SECRET` — Client secret **value** (the secret string, not the secret ID)
-3. **Get the values from Azure:**
+2. **Variables** (tab): add `ARM_CLIENT_ID`, `ARM_TENANT_ID`, `ARM_SUBSCRIPTION_ID`.
+3. **Secrets** (tab): add `ARM_CLIENT_SECRET` — the client secret **value** (the secret string, not the secret ID).
+4. **Get the values from Azure:**
    - **Option A (Azure Portal):** Azure AD → App registrations → your app → Overview (Application ID, Directory ID). Certificates & secrets → create a client secret and copy its **Value** (only shown once).
    - **Option B (Azure CLI):** See "Create service principal (one-time)" below.
-4. **Subscription ID:** Azure Portal → Subscriptions, or run: `az account show --query id -o tsv`.
-5. Re-run the workflow. These must be **Secrets**, not Variables.
+5. **Subscription ID:** Azure Portal → Subscriptions, or run: `az account show --query id -o tsv`.
+6. Re-run the workflow.
 
 **Create service principal (one-time)** — run locally with Azure CLI:
 
@@ -39,22 +36,22 @@ az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
 az ad sp create-for-rbac --name "dify-aks-github" --role Contributor --scopes /subscriptions/<YOUR_SUBSCRIPTION_ID>
 ```
 
-From the JSON output: use `appId` → `ARM_CLIENT_ID`, `tenant` → `ARM_TENANT_ID`, `password` → `ARM_CLIENT_SECRET`. Use your subscription ID for `ARM_SUBSCRIPTION_ID`.
+From the JSON output: use `appId` → Variable `ARM_CLIENT_ID`, `tenant` → Variable `ARM_TENANT_ID`, `password` → Secret `ARM_CLIENT_SECRET`. Use your subscription ID for Variable `ARM_SUBSCRIPTION_ID`.
 
-**Checklist:** All four secrets exist, names are exact (case-sensitive), and `ARM_CLIENT_SECRET` is the secret value not the ID.
+**Checklist:** Three variables and one secret; names exact (case-sensitive); `ARM_CLIENT_SECRET` is the secret **value** not the secret ID.
 
 ## Terraform / Dify (passed as TF_VAR_*)
 
-The workflow sets these as Terraform environment variables from secrets; they are never written into tfvars.
+The workflow sets these as Terraform environment variables from Variables and Secrets; they are never written into tfvars.
 
-| Secret name | Terraform variable |
-|-------------|--------------------|
-| `AZURE_BLOB_ACCOUNT_NAME` | `TF_VAR_azure_blob_account_name` (and used to build `TF_VAR_azure_blob_account_url`) |
-| `AZURE_BLOB_ACCOUNT_KEY` | `TF_VAR_azure_blob_account_key` |
-| `DIFY_SECRET_KEY` | `TF_VAR_dify_secret_key` |
-| `POSTGRESQL_PASSWORD` | `TF_VAR_postgresql_password` |
-| `REDIS_PASSWORD` | `TF_VAR_redis_password` |
-| `QDRANT_API_KEY` | `TF_VAR_qdrant_api_key` |
+| Name | Terraform variable | Store as |
+|------|--------------------|----------|
+| `AZURE_BLOB_ACCOUNT_NAME` | `TF_VAR_azure_blob_account_name` (and used to build `TF_VAR_azure_blob_account_url`) | **Variable** |
+| `AZURE_BLOB_ACCOUNT_KEY` | `TF_VAR_azure_blob_account_key` | **Secret** |
+| `DIFY_SECRET_KEY` | `TF_VAR_dify_secret_key` | **Secret** |
+| `POSTGRESQL_PASSWORD` | `TF_VAR_postgresql_password` | **Secret** |
+| `REDIS_PASSWORD` | `TF_VAR_redis_password` | **Secret** |
+| `QDRANT_API_KEY` | `TF_VAR_qdrant_api_key` | **Secret** |
 
 ## Optional
 
