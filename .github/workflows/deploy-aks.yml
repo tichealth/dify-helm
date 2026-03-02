@@ -46,7 +46,8 @@ env:
 jobs:
   deploy-or-teardown:
     runs-on: ubuntu-latest
-    # optional: add "environment: aks-deploy" for approval gates (create the env in repo Settings)
+    # Use GitHub Environment (dev / test / prod) so vars and secrets come from that environment
+    environment: ${{ inputs.environment == 'lite-prod' || inputs.environment == 'prod-full' ? 'prod' : inputs.environment }}
     defaults:
       run:
         working-directory: ${{ env.TF_DIR }}
@@ -96,8 +97,13 @@ jobs:
           helm version
 
       - name: Terraform Init
-        run: terraform init
-        # For persistent state in CI, configure a backend (e.g. azurerm) in Terraform and set backend env vars here.
+        run: |
+          terraform init -reconfigure \
+            -backend-config="resource_group_name=${{ vars.BACKEND_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ inputs.environment }}.terraform.tfstate" \
+            -backend-config="access_key=${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}"
 
       - name: Deploy (all)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'all'

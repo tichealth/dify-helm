@@ -204,7 +204,13 @@ echo -e "${GREEN}✓ All prerequisites met${NC}\n"
 # Step 1: Initialize Terraform
 echo -e "${YELLOW}Step 1: Initializing Terraform...${NC}"
 cd "$TF_DIR" || exit 1
-terraform init
+if [ -f "backend.azurerm.tfvars" ]; then
+    echo "Using remote backend (backend.azurerm.tfvars)"
+    terraform init -reconfigure -backend-config=backend.azurerm.tfvars
+else
+    echo "No backend.azurerm.tfvars; using default backend (local or as configured)"
+    terraform init
+fi
 echo -e "${GREEN}✓ Terraform initialized${NC}\n"
 
 # Step 2: Create/Update Infrastructure

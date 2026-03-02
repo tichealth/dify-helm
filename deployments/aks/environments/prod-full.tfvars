@@ -9,7 +9,7 @@
 project_name = "dify-prod"
 location     = "australiaeast"
 
-resource_group_name = ""
+resource_group_name = "rg-cme-prod"
 
 # AKS - 3 nodes for resilience
 kubernetes_version    = null
@@ -18,7 +18,7 @@ vm_size               = "Standard_D4s_v5"
 enable_spot_node_pool = false
 
 # Azure Blob Storage (secrets via TF_VAR_* from GitHub Secrets in CI)
-azure_blob_container_name = "dify-data"
+azure_blob_container_name = "difydata"
 
 # Dify (dify_secret_key via TF_VAR_* in CI)
 dify_init_password = ""

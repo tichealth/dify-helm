@@ -5,7 +5,7 @@
 project_name = "dify-test"
 location     = "australiaeast"
 
-resource_group_name = ""
+resource_group_name = "rg-cme-test"
 
 # AKS - 1 node + optional spot pool
 kubernetes_version    = null
@@ -18,7 +18,7 @@ spot_node_count       = 1
 spot_max_price        = -1
 
 # Azure Blob Storage (secrets via TF_VAR_* in CI)
-azure_blob_container_name = "dify-data"
+azure_blob_container_name = "difydata"
 
 dify_init_password = ""
 

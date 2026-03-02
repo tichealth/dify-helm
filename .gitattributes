@@ -1,0 +1,2 @@
+# Shell scripts: always LF so they run on Linux/WSL (no bash\r error)
+*.sh text eol=lf

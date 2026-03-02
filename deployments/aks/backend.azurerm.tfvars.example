@@ -1,0 +1,11 @@
+# Copy to backend.azurerm.tfvars and fill in. Do not commit backend.azurerm.tfvars.
+# Then: terraform init -reconfigure -backend-config=backend.azurerm.tfvars
+#
+# Same storage account as Dify blob (e.g. stcmedifyhelmprod); use the tfstate container.
+# Get access_key from: az storage account keys list --resource-group <rg> --account-name stcmedifyhelmprod --query "[0].value" -o tsv
+
+resource_group_name  = "rg-cme-prod"
+storage_account_name  = "stcmedifyhelmprod"
+container_name        = "tfstate"
+key                   = "dev.terraform.tfstate"   # e.g. dev.terraform.tfstate, test.terraform.tfstate, prod.terraform.tfstate
+access_key            = "REPLACE_WITH_YOUR_STORAGE_ACCOUNT_KEY"

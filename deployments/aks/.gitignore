@@ -2,6 +2,8 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+# Backend config (holds storage account key)
+backend.azurerm.tfvars
 # Ignore root terraform.tfvars (holds real secrets when copied from environments/)
 terraform.tfvars
 # Ignore any other .tfvars outside environments/ (e.g. local overrides)
