@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      # Do not add id-token: write — we use SERVICE_PRINCIPAL + client-secret only (no OIDC/federated credentials)
     # Use GitHub Environment (dev / test / prod) so vars and secrets come from that environment
     environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
     defaults:
