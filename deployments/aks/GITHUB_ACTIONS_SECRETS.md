@@ -15,6 +15,34 @@ For the **Deploy or teardown Dify on AKS** workflow (`.github/workflows/deploy-a
 
 Create a service principal with Contributor (or appropriate) scope on the subscription or resource group used for Dify. [Azure: Create service principal](https://learn.microsoft.com/en-us/cli/azure/ad/sp/create-for-rbac).
 
+### Fix: "Not all values are present. Ensure 'client-id' and 'tenant-id' are supplied"
+
+This error means the Azure login step is missing one or more of the four service principal secrets. Do the following:
+
+1. **In GitHub:** Repo → **Settings** → **Secrets and variables** → **Actions**.
+2. **Add or fix these repository secrets** (names must be exact):
+   - `ARM_CLIENT_ID` — Application (client) ID of the service principal
+   - `ARM_TENANT_ID` — Directory (tenant) ID of the Azure AD tenant
+   - `ARM_SUBSCRIPTION_ID` — Azure subscription ID
+   - `ARM_CLIENT_SECRET` — Client secret **value** (the secret string, not the secret ID)
+3. **Get the values from Azure:**
+   - **Option A (Azure Portal):** Azure AD → App registrations → your app → Overview (Application ID, Directory ID). Certificates & secrets → create a client secret and copy its **Value** (only shown once).
+   - **Option B (Azure CLI):** See "Create service principal (one-time)" below.
+4. **Subscription ID:** Azure Portal → Subscriptions, or run: `az account show --query id -o tsv`.
+5. Re-run the workflow. These must be **Secrets**, not Variables.
+
+**Create service principal (one-time)** — run locally with Azure CLI:
+
+```bash
+az login
+az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
+az ad sp create-for-rbac --name "dify-aks-github" --role Contributor --scopes /subscriptions/<YOUR_SUBSCRIPTION_ID>
+```
+
+From the JSON output: use `appId` → `ARM_CLIENT_ID`, `tenant` → `ARM_TENANT_ID`, `password` → `ARM_CLIENT_SECRET`. Use your subscription ID for `ARM_SUBSCRIPTION_ID`.
+
+**Checklist:** All four secrets exist, names are exact (case-sensitive), and `ARM_CLIENT_SECRET` is the secret value not the ID.
+
 ## Terraform / Dify (passed as TF_VAR_*)
 
 The workflow sets these as Terraform environment variables from secrets; they are never written into tfvars.
