@@ -19,8 +19,6 @@ data "azurerm_resource_group" "existing_rg" {
 }
 
 locals {
-  # Avoid index errors when count = 0 by using try/coalesce.
-  # This is more resilient than conditionals when Terraform evaluates expressions early.
   rg_name = coalesce(
     try(data.azurerm_resource_group.existing_rg[0].name, null),
     try(azurerm_resource_group.rg[0].name, null)
@@ -251,21 +249,15 @@ resource "azurerm_private_dns_zone_virtual_network_link" "aks" {
   depends_on = [data.azurerm_resources.aks_vnets]
 }
 
-# Get AKS node resource group to find the VNet for peering
 data "azurerm_resource_group" "aks_node" {
   count = var.use_azure_postgres && var.create_vnet_for_postgres ? 1 : 0
   name  = azurerm_kubernetes_cluster.aks.node_resource_group
 }
 
-# Get all VNets in AKS node resource group (AKS creates a VNet here)
-# Using azurerm_resources to find VNets by resource type
-# Note: AKS VNet is created asynchronously, so we need to wait for AKS to be fully ready
 data "azurerm_resources" "aks_vnets" {
   count               = var.use_azure_postgres && var.create_vnet_for_postgres ? 1 : 0
   resource_group_name = data.azurerm_resource_group.aks_node[0].name
   type                = "Microsoft.Network/virtualNetworks"
-
-  # Ensure AKS is fully created before querying for VNet
   depends_on = [
     azurerm_kubernetes_cluster.aks,
     time_sleep.aks_control_plane_ready
@@ -273,14 +265,10 @@ data "azurerm_resources" "aks_vnets" {
 }
 
 locals {
-  # Get the first VNet from AKS node resource group (AKS typically creates one VNet)
-  # AKS VNet ID is available after AKS is created
-  aks_vnet_id = var.create_vnet_for_postgres && length(data.azurerm_resources.aks_vnets) > 0 && length(data.azurerm_resources.aks_vnets[0].resources) > 0 ? data.azurerm_resources.aks_vnets[0].resources[0].id : null
+  aks_vnet_id   = try(data.azurerm_resources.aks_vnets[0].resources[0].id, null)
   aks_vnet_name = local.aks_vnet_id != null ? split("/", local.aks_vnet_id)[8] : null
 }
 
-# VNet Peering: PostgreSQL VNet -> AKS VNet
-# Count uses vars only so Terraform can evaluate it at plan time
 resource "azurerm_virtual_network_peering" "postgres_to_aks" {
   count                     = var.use_azure_postgres && var.create_vnet_for_postgres ? 1 : 0
   name                      = "${local.name_prefix}-postgres-to-aks"

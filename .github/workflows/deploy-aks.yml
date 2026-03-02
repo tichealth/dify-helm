@@ -1,12 +1,7 @@
-# Manual deploy or teardown of Dify on AKS.
-# Only runs when triggered manually (workflow_dispatch only — no push, PR, or schedule).
-# Run from Actions tab → "Deploy or teardown Dify on AKS" → Run workflow.
-# Configure GitHub Secrets (see deployments/aks/GITHUB_ACTIONS_SECRETS.md).
-
 name: Deploy or teardown Dify on AKS
 
 on:
-  workflow_dispatch:  # manual only; no other triggers
+  workflow_dispatch:
     inputs:
       enabled:
         description: 'Enable workflow run (leave unchecked to disable)'
@@ -55,8 +50,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Do not add id-token: write — we use SERVICE_PRINCIPAL + client-secret only (no OIDC/federated credentials)
-    # Use GitHub Environment (dev / test / prod) so vars and secrets come from that environment
     environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
     defaults:
       run:
@@ -81,7 +74,7 @@ jobs:
           [ -n "${{ secrets.REDIS_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: REDIS_PASSWORD" && exit 1)
           [ -n "${{ secrets.QDRANT_API_KEY }}" ] || (echo "Missing GitHub Environment secret: QDRANT_API_KEY" && exit 1)
 
-      - name: Azure Login (client-secret only; no OIDC)
+      - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -131,10 +124,8 @@ jobs:
         run: |
           curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
           az version
-          # kubectl
           curl -sLO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-          # Helm
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
           helm version
 

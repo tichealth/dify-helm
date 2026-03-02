@@ -1,11 +1,7 @@
 terraform {
   required_version = ">= 1.5.0"
 
-  backend "azurerm" {
-    # Configure via: terraform init -reconfigure -backend-config=backend.azurerm.tfvars
-    # Or in CI: -backend-config=resource_group_name=... -backend-config=storage_account_name=... etc.
-    # Required: resource_group_name, storage_account_name, container_name, key, access_key
-  }
+  backend "azurerm" {}
 
   required_providers {
     azurerm = {

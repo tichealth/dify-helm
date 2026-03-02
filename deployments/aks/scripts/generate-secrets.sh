@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Generate cryptographically secure values for GitHub Actions Secrets.
-# Run from repo root or from deployments/aks. Copy output into GitHub Secrets.
-# Requires: openssl
-#
-# If you see "/usr/bin/env: 'bash\r': No such file or directory", the file has
-# Windows line endings. Either run:  bash generate-secrets.sh
-# or fix once:  sed -i 's/\r$//' generate-secrets.sh
-
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
