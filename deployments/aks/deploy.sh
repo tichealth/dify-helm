@@ -3,7 +3,7 @@
 # This script orchestrates infrastructure creation with Terraform and application deployment with Helm
 # Part of dify-helm repository: deployments/aks/
 
-set -e  # Exit on error
+set -euo pipefail  # Exit on error; fail pipelines; error on unset vars
 
 # Colors for output
 RED='\033[0;31m'
@@ -55,6 +55,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 CERT_EMAIL="${CERT_EMAIL:-vivek.narayanan@tichealth.com.au}"
+
+on_err() {
+    echo -e "${RED}✗ Deployment failed.${NC}"
+    if [ -f "$TF_DIR/terraform-apply.log" ]; then
+        echo ""
+        echo "Last 200 lines of terraform-apply.log:"
+        tail -n 200 "$TF_DIR/terraform-apply.log" || true
+    fi
+}
+trap on_err ERR
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Dify Hybrid Deployment (Terraform + Helm)${NC}"

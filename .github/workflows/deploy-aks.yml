@@ -116,6 +116,17 @@ jobs:
           terraform_version: "1.6.0"
           terraform_wrapper: false
 
+      - name: Write Terraform backend config (remote state)
+        run: |
+          cat > backend.azurerm.tfvars <<'EOF'
+          resource_group_name  = "${{ vars.BACKEND_RESOURCE_GROUP }}"
+          storage_account_name = "${{ vars.AZURE_BLOB_ACCOUNT_NAME }}"
+          container_name       = "tfstate"
+          key                  = "${{ inputs.environment }}.terraform.tfstate"
+          access_key           = "${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}"
+          EOF
+          chmod 600 backend.azurerm.tfvars
+
       - name: Install Azure CLI, kubectl, Helm
         run: |
           curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash

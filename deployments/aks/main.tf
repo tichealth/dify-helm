@@ -19,8 +19,17 @@ data "azurerm_resource_group" "existing_rg" {
 }
 
 locals {
-  rg_name     = var.resource_group_name != "" ? data.azurerm_resource_group.existing_rg[0].name : azurerm_resource_group.rg[0].name
-  rg_location = var.resource_group_name != "" ? data.azurerm_resource_group.existing_rg[0].location : azurerm_resource_group.rg[0].location
+  # Avoid index errors when count = 0 by using try/coalesce.
+  # This is more resilient than conditionals when Terraform evaluates expressions early.
+  rg_name = coalesce(
+    try(data.azurerm_resource_group.existing_rg[0].name, null),
+    try(azurerm_resource_group.rg[0].name, null)
+  )
+
+  rg_location = coalesce(
+    try(data.azurerm_resource_group.existing_rg[0].location, null),
+    try(azurerm_resource_group.rg[0].location, null)
+  )
 }
 
 resource "azurerm_kubernetes_cluster" "aks" {
