@@ -35,11 +35,6 @@ on:
           - lite-prod
           - prod-full
         default: 'dev'
-      auto_approve:
-        description: 'Skip confirmation prompts'
-        required: false
-        type: boolean
-        default: false
 
 env:
   TF_DIR: deployments/aks
@@ -142,19 +137,19 @@ jobs:
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'all'
         run: |
           chmod +x deploy.sh
-          ./deploy.sh --all ${{ inputs.auto_approve && '--auto-approve' || '' }}
+          ./deploy.sh --all --auto-approve
 
       - name: Deploy (app only)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'app'
         run: |
           chmod +x deploy.sh
-          ./deploy.sh --app ${{ inputs.auto_approve && '--auto-approve' || '' }}
+          ./deploy.sh --app --auto-approve
 
       - name: Deploy (db only)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'db'
         run: |
           chmod +x deploy.sh
-          ./deploy.sh --db ${{ inputs.auto_approve && '--auto-approve' || '' }}
+          ./deploy.sh --db --auto-approve
 
       - name: Get AKS credentials (for teardown)
         if: inputs.action == 'teardown'

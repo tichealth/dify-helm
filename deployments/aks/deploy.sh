@@ -346,7 +346,7 @@ done
         echo ""
         echo "4. Once connected, continue deployment manually:"
         echo "   helm repo add dify https://borispolonsky.github.io/dify-helm && helm repo update"
-        echo "   helm upgrade --install dify dify/dify -f values.yaml --namespace dify --create-namespace --timeout 20m --atomic --wait"
+        echo "   helm upgrade --install dify dify/dify -f values.yaml --namespace dify --create-namespace --timeout 45m --atomic --wait"
         exit 1
     fi
 else
@@ -462,7 +462,7 @@ EOF
     helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
         --namespace "$NAMESPACE" \
         --create-namespace \
-        --timeout 20m \
+        --timeout 45m \
         --atomic \
         --wait \
         $VALUES_ARG $SET_POSTGRES
