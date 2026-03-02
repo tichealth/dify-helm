@@ -164,13 +164,37 @@ For **local** runs (e.g. `./deploy.sh`), Terraform uses the same **azurerm** bac
 
 - **Environments:** In the workflow you can add `environment: aks-deploy` (and create that environment in Settings → Environments) to require approvals before deploy/teardown.
 
+## Status badge, unpin, disable
+
+- **Status badge:** Add to your README (replace OWNER/REPO):
+  ```markdown
+  [![Deploy or teardown Dify on AKS](https://github.com/OWNER/REPO/actions/workflows/deploy-aks.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/deploy-aks.yml)
+  ```
+- **Unpin workflow:** In the Actions tab, click the workflow → click the **pin** icon (if it’s pinned) to unpin it so it doesn’t stay at the top of the list.
+- **Disable by default:** The workflow has an input **“Enable workflow run”** (default **unchecked**). The job runs only when that box is checked. Leave it unchecked to avoid running; check it when you want to deploy or teardown.
+
 ## Workflow inputs (manual run)
 
 When you click **Run workflow** you choose:
 
+- **enabled:** Check to allow the workflow to run (default: unchecked = disabled).
 - **action:** `deploy` or `teardown`
 - **deploy_mode:** `all`, `app`, or `db` (only when action = deploy)
 - **environment:** `dev`, `test`, `lite-prod`, or `prod-full` (picks the tfvars file **and** the GitHub Environment for secrets/variables)
-- **auto_approve:** skip confirmation prompts (default: true)
+- **auto_approve:** skip confirmation prompts (default: false)
 
 **How environment is used:** The selected value chooses both (1) which tfvars file is copied (e.g. `dev.tfvars`, `lite-prod.tfvars`) and (2) which GitHub Environment’s Variables and Secrets are used. Mapping: **dev** → env `dev`, **test** → env `test`, **lite-prod** and **prod-full** → env `prod`. So create GitHub Environments named exactly `dev`, `test`, and `prod`, and add the Variables and Secrets to each.
+
+## Troubleshooting: Can't run the workflow
+
+- **"Run workflow" not showing or disabled**  
+  The workflow only runs when triggered manually. Go to **Actions** → select **"Deploy or teardown Dify on AKS"** in the left sidebar → use the **Run workflow** dropdown. Choose the **branch** that contains this workflow file (e.g. `main`). If the workflow isn't on the default branch, run from the branch where `.github/workflows/deploy-aks.yml` exists. You need **write** access to the repo to run it.
+
+- **Workflow fails immediately with "Environment X could not be found"**  
+  The job uses a GitHub Environment (`dev`, `test`, or `prod`). Create them first: **Settings** → **Environments** → **New environment** → add `dev`, `test`, and `prod`. You can leave protection rules empty. Then add the Variables and Secrets to each environment.
+
+- **Workflow is waiting for approval**  
+  If an environment has **Required reviewers**, someone must approve the run. Either approve it or edit the environment and remove the required reviewers.
+
+- **Workflow file not on GitHub yet**  
+  Commit and push `.github/workflows/deploy-aks.yml` (and the rest of the repo). After push, the workflow appears under Actions and you can run it from the branch you pushed to.

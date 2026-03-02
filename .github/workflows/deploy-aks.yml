@@ -1,12 +1,18 @@
 # Manual deploy or teardown of Dify on AKS.
+# Only runs when triggered manually (workflow_dispatch only — no push, PR, or schedule).
 # Run from Actions tab → "Deploy or teardown Dify on AKS" → Run workflow.
 # Configure GitHub Secrets (see deployments/aks/GITHUB_ACTIONS_SECRETS.md).
 
 name: Deploy or teardown Dify on AKS
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # manual only; no other triggers
     inputs:
+      enabled:
+        description: 'Enable workflow run (leave unchecked to disable)'
+        required: true
+        type: boolean
+        default: false
       action:
         description: 'Deploy or teardown'
         required: true
@@ -38,13 +44,14 @@ on:
         description: 'Skip confirmation prompts'
         required: false
         type: boolean
-        default: true
+        default: false
 
 env:
   TF_DIR: deployments/aks
 
 jobs:
   deploy-or-teardown:
+    if: inputs.enabled
     runs-on: ubuntu-latest
     # Use GitHub Environment (dev / test / prod) so vars and secrets come from that environment
     environment: ${{ inputs.environment == 'lite-prod' || inputs.environment == 'prod-full' ? 'prod' : inputs.environment }}

@@ -1,5 +1,9 @@
 # Dify AKS Deployment
 
+[![Deploy or teardown Dify on AKS](https://github.com/OWNER/REPO/actions/workflows/deploy-aks.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/deploy-aks.yml)
+
+Replace `OWNER` and `REPO` in the badge URL with your GitHub org/user and repo name (e.g. `TicHealth`/`dify-helm`).
+
 Terraform and Helm for Dify on Azure Kubernetes Service (AKS) with HTTPS.
 
 ## Quick Start
