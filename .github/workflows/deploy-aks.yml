@@ -1,0 +1,134 @@
+# Manual deploy or teardown of Dify on AKS.
+# Run from Actions tab → "Deploy or teardown Dify on AKS" → Run workflow.
+# Configure GitHub Secrets (see deployments/aks/GITHUB_ACTIONS_SECRETS.md).
+
+name: Deploy or teardown Dify on AKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Deploy or teardown'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - teardown
+        default: 'deploy'
+      deploy_mode:
+        description: 'Deploy scope (when action=deploy)'
+        required: true
+        type: choice
+        options:
+          - all
+          - app
+          - db
+        default: 'all'
+      environment:
+        description: 'Environment (tfvars)'
+        required: true
+        type: choice
+        options:
+          - lite-prod
+          - prod-full
+        default: 'lite-prod'
+      auto_approve:
+        description: 'Skip confirmation prompts'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  TF_DIR: deployments/aks
+
+jobs:
+  deploy-or-teardown:
+    runs-on: ubuntu-latest
+    # optional: add "environment: aks-deploy" for approval gates (create the env in repo Settings)
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
+
+      - name: Copy environment tfvars
+        run: |
+          cp "environments/${{ inputs.environment }}.tfvars" terraform.tfvars
+          echo "Using environment: ${{ inputs.environment }}"
+
+      - name: Set Terraform variables from GitHub Secrets
+        run: |
+          echo "TF_VAR_azure_blob_account_name=${{ secrets.AZURE_BLOB_ACCOUNT_NAME }}" >> $GITHUB_ENV
+          echo "TF_VAR_azure_blob_account_key=${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}" >> $GITHUB_ENV
+          echo "TF_VAR_azure_blob_account_url=https://${{ secrets.AZURE_BLOB_ACCOUNT_NAME }}.blob.core.windows.net" >> $GITHUB_ENV
+          echo "TF_VAR_dify_secret_key=${{ secrets.DIFY_SECRET_KEY }}" >> $GITHUB_ENV
+          echo "TF_VAR_postgresql_password=${{ secrets.POSTGRESQL_PASSWORD }}" >> $GITHUB_ENV
+          echo "TF_VAR_redis_password=${{ secrets.REDIS_PASSWORD }}" >> $GITHUB_ENV
+          echo "TF_VAR_qdrant_api_key=${{ secrets.QDRANT_API_KEY }}" >> $GITHUB_ENV
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+          terraform_wrapper: false
+
+      - name: Install Azure CLI, kubectl, Helm
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          az version
+          # kubectl
+          curl -sLO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          # Helm
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm version
+
+      - name: Terraform Init
+        run: terraform init
+        # For persistent state in CI, configure a backend (e.g. azurerm) in Terraform and set backend env vars here.
+
+      - name: Deploy (all)
+        if: inputs.action == 'deploy' && inputs.deploy_mode == 'all'
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh --all ${{ inputs.auto_approve && '--auto-approve' || '' }}
+
+      - name: Deploy (app only)
+        if: inputs.action == 'deploy' && inputs.deploy_mode == 'app'
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh --app ${{ inputs.auto_approve && '--auto-approve' || '' }}
+
+      - name: Deploy (db only)
+        if: inputs.action == 'deploy' && inputs.deploy_mode == 'db'
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh --db ${{ inputs.auto_approve && '--auto-approve' || '' }}
+
+      - name: Get AKS credentials (for teardown)
+        if: inputs.action == 'teardown'
+        run: |
+          CLUSTER=$(terraform output -raw aks_cluster_name)
+          RG=$(terraform output -raw resource_group_name)
+          az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
+
+      - name: Uninstall Helm releases (teardown)
+        if: inputs.action == 'teardown'
+        run: |
+          helm uninstall dify -n dify 2>/dev/null || true
+          helm uninstall ingress-nginx -n ingress-nginx 2>/dev/null || true
+          helm uninstall cert-manager -n cert-manager 2>/dev/null || true
+
+      - name: Terraform Destroy (teardown)
+        if: inputs.action == 'teardown'
+        run: terraform destroy -auto-approve

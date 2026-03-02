@@ -1,106 +1,60 @@
 # Dify AKS Deployment
 
-This directory contains the Terraform and Helm configuration for deploying Dify on Azure Kubernetes Service (AKS) with HTTPS enabled.
-
-## Quick Links
-
-- [Cost Summary](./COST_SUMMARY_2026-01-24.md) - Current cost estimates
-- [Cost Optimizations](./COST_OPTIMIZATIONS_2026-01-24.md) - Savings opportunities
-- [Infracost](./INFRACOST.md) - Generate exact estimates from Terraform
-- [HTTPS Guide](./HTTPS_SETUP_GUIDE.md) - Complete HTTPS/TLS setup and troubleshooting
-- [Upgrade Guide](./UPGRADE_GUIDE.md) - How to upgrade Dify versions
-- [Docker Compose Comparison](./DOCKER_COMPOSE_COMPARISON.md) - Configuration alignment reference
-
-## Current Deployment Status
-
-- **Dify Version**: 1.11.2
-- **HTTPS Status**: `kubectl get certificate -n dify`
-- **Ingress IP**: `kubectl get svc -n ingress-nginx ingress-nginx-controller`
+Terraform and Helm for Dify on Azure Kubernetes Service (AKS) with HTTPS.
 
 ## Quick Start
 
-### Deploy Infrastructure + Dify
-
 ```bash
-./deploy.sh
+cd deployments/aks
+cp environments/lite-prod.tfvars terraform.tfvars   # or prod-full.tfvars
+# Add secret variables to terraform.tfvars (see PROD_DEPLOY.md)
+./deploy.sh --auto-approve
 ```
 
-## Configuration Files
+Secrets are not in the repo: add them to `terraform.tfvars` (git-ignored) or use `TF_VAR_*` env vars. See [PROD_DEPLOY.md](./PROD_DEPLOY.md#local-deploy).
 
-- `terraform.tfvars` - Infrastructure variables (git-ignored, contains secrets)
-- `values.yaml` - Helm chart values for Dify (includes HTTPS configuration)
-- `main.tf` - Terraform infrastructure code
-- `coredns-patch.yaml` - CoreDNS configuration (uses external DNS servers for faster resolution)
+## Deploy and environments
 
-## HTTPS Status
+- **[PROD_DEPLOY.md](./PROD_DEPLOY.md)** — Production deploy: lite vs full, local deploy, secrets, checklist
+- **[DEPLOYMENT_MODES.md](./DEPLOYMENT_MODES.md)** — `./deploy.sh --all | --app | --db`
+- **[LITE_PROD_VS_PROD.md](./LITE_PROD_VS_PROD.md)** — Lite prod (1 node) vs full prod (3 nodes): cost, scalability, migration
+- **[GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md)** — Secrets for the [deploy/teardown workflow](../../.github/workflows/deploy-aks.yml)
 
-Check status:
-```bash
-kubectl get certificate -n dify
-```
+## Operations and troubleshooting
 
-For troubleshooting or setup details, see [HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md).
+- **[OPERATIONS.md](./OPERATIONS.md)** — Get PostgreSQL FQDN, Dify endpoint, Azure Blob key
+- **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)** — Stuck deployment, DNS (NXDOMAIN) fixes
+- **[HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md)** — HTTPS/TLS, cert-manager, DNS
 
-## Cost Information
+## Cost and architecture
 
-- [COST_SUMMARY_2026-01-24.md](./COST_SUMMARY_2026-01-24.md)
-- [COST_OPTIMIZATIONS_2026-01-24.md](./COST_OPTIMIZATIONS_2026-01-24.md)
-- [INFRACOST.md](./INFRACOST.md)
+- [COST_SUMMARY_2026-01-24.md](./COST_SUMMARY_2026-01-24.md) — Cost estimates
+- [INFRACOST.md](./INFRACOST.md) — Exact cost from Terraform
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — Architecture overview
 
-## Documentation
+## Configuration files
 
-- **[COST_SUMMARY_2026-01-24.md](./COST_SUMMARY_2026-01-24.md)** - Cost summary (Dev/Test/Prod)
-- **[COST_OPTIMIZATIONS_2026-01-24.md](./COST_OPTIMIZATIONS_2026-01-24.md)** - Cost optimizations
-- **[INFRACOST.md](./INFRACOST.md)** - Infracost usage
-- **[HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md)** - Complete HTTPS setup, troubleshooting, and DNS configuration
-- **[UPGRADE_GUIDE.md](./UPGRADE_GUIDE.md)** - Dify version upgrade procedures
-- **[DOCKER_COMPOSE_COMPARISON.md](./DOCKER_COMPOSE_COMPARISON.md)** - Configuration alignment with docker-compose.yaml
-- **[HOW_TO_GET_AZURE_BLOB_KEY.md](./HOW_TO_GET_AZURE_BLOB_KEY.md)** - Azure Storage account key retrieval
-- **[DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)** - Complete documentation index
-- **[CHANGELOG.md](./CHANGELOG.md)** - Deployment changes and updates
-- **[CHANGES_TO_PROPAGATE.md](./CHANGES_TO_PROPAGATE.md)** - Changes to propagate to other environments
-- **[POSTGRESQL_ARCHITECTURE.md](./POSTGRESQL_ARCHITECTURE.md)** - PostgreSQL deployment architecture (in-cluster vs Azure Flexible Server)
-
-## Architecture
-
-```
-Internet
-   ↓
-nginx-ingress LoadBalancer (<ingress-lb-ip>)
-   ↓
-Ingress (TLS termination)
-   ↓
-Dify Service (ClusterIP)
-   ↓
-Dify Pods (API, Web, Worker, etc.)
-```
-
-## Key Components
-
-- **nginx-ingress**: Routes external traffic and terminates TLS
-- **cert-manager**: Manages Let's Encrypt certificates
-- **CoreDNS**: Configured to use external DNS (8.8.8.8, 1.1.1.1) for faster resolution
-- **Dify**: Application deployed via Helm chart
+- `terraform.tfvars` — Infra variables (git-ignored; copy from `environments/*.tfvars` and add secrets)
+- `values.yaml` — Helm values for Dify (ingress host, resources)
+- `main.tf`, `variables.tf`, `outputs.tf` — Terraform
 
 ## Verification
 
 ```bash
-# Check certificate status
 kubectl get certificate -n dify
-
-# Check ingress
 kubectl get ingress -n dify
-
-# Test HTTPS
-curl -I https://dify-dev.tichealth.com.au/apps
-
-# Check all pods
 kubectl get pods -n dify
+kubectl get svc -n ingress-nginx ingress-nginx-controller   # LoadBalancer IP
 ```
+
+## Full doc list
+
+See **[DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)** for the complete list (teardown, upgrade, PostgreSQL, changelog, etc.).
+
+## Architecture (summary)
+
+Internet → nginx-ingress (LoadBalancer) → Ingress (TLS) → Dify (ClusterIP) → API/Web/Worker/Sandbox. cert-manager issues Let's Encrypt certs; CoreDNS uses 8.8.8.8 / 1.1.1.1. Details: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Support
 
-For issues or questions:
-1. Check the relevant guide in this directory
-2. Review Kubernetes resources: `kubectl get all -n dify`
-3. Check logs: `kubectl logs -n dify -l app.kubernetes.io/name=dify`
+Use [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) and [OPERATIONS.md](./OPERATIONS.md); run `kubectl get all -n dify` and `kubectl logs -n dify -l app.kubernetes.io/name=dify` for debugging.

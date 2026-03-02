@@ -2,8 +2,13 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+# Ignore root terraform.tfvars (holds real secrets when copied from environments/)
+terraform.tfvars
+# Ignore any other .tfvars outside environments/ (e.g. local overrides)
 *.tfvars
+# Track example/template tfvars in repo
 !terraform.tfvars.example
+!environments/*.tfvars
 terraform-apply.log
 .terraform.lock.hcl
 
