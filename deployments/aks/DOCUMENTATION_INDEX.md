@@ -7,7 +7,7 @@ Single index for Dify AKS deployment docs.
 | Doc | Purpose |
 |-----|--------|
 | [README.md](./README.md) | Entry point, quick start, config files, verification |
-| [PROD_DEPLOY.md](./PROD_DEPLOY.md) | Production deploy: environments (lite/full), local deploy, secrets, checklist |
+| [PROD_DEPLOY.md](./PROD_DEPLOY.md) | Deploy: environments (dev, test, lite-prod, prod-full), local deploy, secrets, checklist |
 | [DEPLOYMENT_MODES.md](./DEPLOYMENT_MODES.md) | `deploy.sh` modes: `--all`, `--app`, `--db` and when to use them |
 | [LITE_PROD_VS_PROD.md](./LITE_PROD_VS_PROD.md) | Lite prod vs full prod: cost, scalability, migration (no data loss) |
 | [TEARDOWN_AND_REDEPLOY.md](./TEARDOWN_AND_REDEPLOY.md) | Teardown and full redeploy steps |
@@ -51,6 +51,6 @@ Single index for Dify AKS deployment docs.
 ## Quick reference
 
 - **Deploy:** `./deploy.sh` or `./deploy.sh --app --auto-approve` — see [DEPLOYMENT_MODES.md](./DEPLOYMENT_MODES.md).
-- **Env files:** `environments/lite-prod.tfvars`, `environments/prod-full.tfvars` — secrets via [GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md) or local `terraform.tfvars`.
+- **Env files:** `environments/dev.tfvars`, `environments/test.tfvars`, `environments/lite-prod.tfvars`, `environments/prod-full.tfvars` — secrets via [GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md) or local `terraform.tfvars`.
 - **Stuck or DNS:** [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 - **Endpoints/keys:** [OPERATIONS.md](./OPERATIONS.md).

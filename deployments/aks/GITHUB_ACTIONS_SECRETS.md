@@ -39,5 +39,7 @@ When you click **Run workflow** you choose:
 
 - **action:** `deploy` or `teardown`
 - **deploy_mode:** `all`, `app`, or `db` (only when action = deploy)
-- **environment:** `lite-prod` or `prod-full` (which tfvars file to use)
+- **environment:** `dev`, `test`, `lite-prod`, or `prod-full` (which tfvars file to use; each environment is separate)
 - **auto_approve:** skip confirmation prompts (default: true)
+
+**Environments:** Dev and test use `environments/dev.tfvars` and `environments/test.tfvars`. Prod uses `lite-prod` or `prod-full`. The same GitHub Secrets are used for all; for different credentials per environment, use [GitHub Environments](https://docs.github.com/en/actions/deployment/targeting-different-environments) and set secrets per environment.

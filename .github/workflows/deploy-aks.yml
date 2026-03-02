@@ -29,9 +29,11 @@ on:
         required: true
         type: choice
         options:
+          - dev
+          - test
           - lite-prod
           - prod-full
-        default: 'lite-prod'
+        default: 'dev'
       auto_approve:
         description: 'Skip confirmation prompts'
         required: false
