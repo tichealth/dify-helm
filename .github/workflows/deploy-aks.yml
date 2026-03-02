@@ -54,7 +54,7 @@ jobs:
     if: inputs.enabled
     runs-on: ubuntu-latest
     # Use GitHub Environment (dev / test / prod) so vars and secrets come from that environment
-    environment: ${{ inputs.environment == 'lite-prod' || inputs.environment == 'prod-full' ? 'prod' : inputs.environment }}
+    environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
     defaults:
       run:
         working-directory: ${{ env.TF_DIR }}
