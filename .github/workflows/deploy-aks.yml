@@ -53,6 +53,9 @@ jobs:
   deploy-or-teardown:
     if: inputs.enabled
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     # Use GitHub Environment (dev / test / prod) so vars and secrets come from that environment
     environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
     defaults:
@@ -63,9 +66,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Preflight (ensure env vars/secrets set)
+        run: |
+          set -euo pipefail
+
+          [ -n "${{ vars.ARM_CLIENT_ID }}" ] || (echo "Missing GitHub Environment variable: ARM_CLIENT_ID" && exit 1)
+          [ -n "${{ vars.ARM_TENANT_ID }}" ] || (echo "Missing GitHub Environment variable: ARM_TENANT_ID" && exit 1)
+          [ -n "${{ vars.ARM_SUBSCRIPTION_ID }}" ] || (echo "Missing GitHub Environment variable: ARM_SUBSCRIPTION_ID" && exit 1)
+          [ -n "${{ secrets.ARM_CLIENT_SECRET }}" ] || (echo "Missing GitHub Environment secret: ARM_CLIENT_SECRET" && exit 1)
+
+          [ -n "${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" ] || (echo "Missing GitHub Environment variable: AZURE_BLOB_ACCOUNT_NAME" && exit 1)
+          [ -n "${{ vars.BACKEND_RESOURCE_GROUP }}" ] || (echo "Missing GitHub Environment variable: BACKEND_RESOURCE_GROUP" && exit 1)
+          [ -n "${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}" ] || (echo "Missing GitHub Environment secret: AZURE_BLOB_ACCOUNT_KEY" && exit 1)
+
+          [ -n "${{ secrets.DIFY_SECRET_KEY }}" ] || (echo "Missing GitHub Environment secret: DIFY_SECRET_KEY" && exit 1)
+          [ -n "${{ secrets.POSTGRESQL_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: POSTGRESQL_PASSWORD" && exit 1)
+          [ -n "${{ secrets.REDIS_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: REDIS_PASSWORD" && exit 1)
+          [ -n "${{ secrets.QDRANT_API_KEY }}" ] || (echo "Missing GitHub Environment secret: QDRANT_API_KEY" && exit 1)
+
       - name: Azure Login
         uses: azure/login@v2
         with:
+          auth-type: SERVICE_PRINCIPAL
           client-id: ${{ vars.ARM_CLIENT_ID }}
           tenant-id: ${{ vars.ARM_TENANT_ID }}
           subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
