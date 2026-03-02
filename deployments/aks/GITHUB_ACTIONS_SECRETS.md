@@ -8,29 +8,32 @@ For the **Deploy or teardown Dify on AKS** workflow (`.github/workflows/deploy-a
 
 **Passwords and keys are not stored in the repo.** Environment tfvars do not contain secret values. The workflow passes them to Terraform as `TF_VAR_*` from the active environment’s Variables and Secrets.
 
-## Azure (service principal)
+## Azure (service principal) — use one JSON secret
+
+The workflow uses **client-secret auth only** (no OIDC/federated credentials). Add a single **Environment secret** so login never falls back to OIDC:
 
 | Name | Description | Store as |
 |------|-------------|----------|
-| `ARM_CLIENT_ID` | Application (client) ID of the service principal | **Variable** |
-| `ARM_TENANT_ID` | Directory (tenant) ID of the Azure AD tenant | **Variable** |
-| `ARM_SUBSCRIPTION_ID` | Azure subscription ID | **Variable** |
-| `ARM_CLIENT_SECRET` | Client secret **value** (the password) | **Secret** |
+| `AZURE_CREDENTIALS` | JSON with `clientId`, `clientSecret`, `tenantId`, `subscriptionId` | **Secret** |
+
+**Format (one line, no extra spaces):**
+
+```json
+{"clientId":"<APP_ID>","clientSecret":"<SECRET_VALUE>","tenantId":"<TENANT_ID>","subscriptionId":"<SUBSCRIPTION_ID>"}
+```
 
 Create a service principal with Contributor (or appropriate) scope on the subscription or resource group used for Dify. [Azure: Create service principal](https://learn.microsoft.com/en-us/cli/azure/ad/sp/create-for-rbac).
 
-### Fix: "Not all values are present. Ensure 'client-id' and 'tenant-id' are supplied"
+### Fix: "Failed to fetch federated token" or "Not all values are present"
 
-This error means the Azure login step is missing one or more of the four values. Do the following:
+The workflow does **not** use OIDC. Ensure you have **one** secret `AZURE_CREDENTIALS` (not four separate vars/secrets). Do the following:
 
-1. **In GitHub:** Repo → **Settings** → **Environments** → select the environment used by the run (e.g. `prod`).
-2. **Environment variables:** add `ARM_CLIENT_ID`, `ARM_TENANT_ID`, `ARM_SUBSCRIPTION_ID`.
-3. **Environment secrets:** add `ARM_CLIENT_SECRET` — the client secret **value** (the secret string, not the secret ID).
-4. **Get the values from Azure:**
-   - **Option A (Azure Portal):** Azure AD → App registrations → your app → Overview (Application ID, Directory ID). Certificates & secrets → create a client secret and copy its **Value** (only shown once).
-   - **Option B (Azure CLI):** See "Create service principal (one-time)" below.
-5. **Subscription ID:** Azure Portal → Subscriptions, or run: `az account show --query id -o tsv`.
-6. Re-run the workflow.
+1. **In GitHub:** Repo → **Settings** → **Environments** → select the environment (e.g. `prod`).
+2. **Environment secrets:** add `AZURE_CREDENTIALS` with the JSON above. Keys must be exactly: `clientId`, `clientSecret`, `tenantId`, `subscriptionId` (camelCase).
+3. **Get the values from Azure:**
+   - **Option A (Azure Portal):** Azure AD → App registrations → your app → Overview (Application ID = clientId, Directory ID = tenantId). Certificates & secrets → create a client secret, copy its **Value** = clientSecret. Subscriptions → copy subscription ID = subscriptionId.
+   - **Option B (Azure CLI):** See below.
+4. Re-run the workflow.
 
 **Create service principal (one-time)** — run locally with Azure CLI:
 
@@ -40,9 +43,9 @@ az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
 az ad sp create-for-rbac --name "dify-aks-github" --role Contributor --scopes /subscriptions/<YOUR_SUBSCRIPTION_ID>
 ```
 
-From the JSON output: use `appId` → Variable `ARM_CLIENT_ID`, `tenant` → Variable `ARM_TENANT_ID`, `password` → Secret `ARM_CLIENT_SECRET`. Use your subscription ID for Variable `ARM_SUBSCRIPTION_ID`.
+From the JSON output: `appId` → clientId, `password` → clientSecret, `tenant` → tenantId. Add your subscription ID as subscriptionId. Build the JSON and paste as the **value** of secret `AZURE_CREDENTIALS`.
 
-**Checklist:** In each environment (dev, test, prod), three variables and one secret; names exact (case-sensitive); `ARM_CLIENT_SECRET` is the secret **value** not the secret ID.
+**Checklist:** In each environment (dev, test, prod), one secret `AZURE_CREDENTIALS`; keys are camelCase; `clientSecret` is the secret **value** not the secret ID.
 
 ## Terraform / Dify (passed as TF_VAR_*)
 

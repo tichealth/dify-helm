@@ -70,10 +70,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          [ -n "${{ vars.ARM_CLIENT_ID }}" ] || (echo "Missing GitHub Environment variable: ARM_CLIENT_ID" && exit 1)
-          [ -n "${{ vars.ARM_TENANT_ID }}" ] || (echo "Missing GitHub Environment variable: ARM_TENANT_ID" && exit 1)
-          [ -n "${{ vars.ARM_SUBSCRIPTION_ID }}" ] || (echo "Missing GitHub Environment variable: ARM_SUBSCRIPTION_ID" && exit 1)
-          [ -n "${{ secrets.ARM_CLIENT_SECRET }}" ] || (echo "Missing GitHub Environment secret: ARM_CLIENT_SECRET" && exit 1)
+          [ -n "${{ secrets.AZURE_CREDENTIALS }}" ] || (echo "Missing GitHub Environment secret: AZURE_CREDENTIALS (JSON with clientId, clientSecret, tenantId, subscriptionId)" && exit 1)
 
           [ -n "${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" ] || (echo "Missing GitHub Environment variable: AZURE_BLOB_ACCOUNT_NAME" && exit 1)
           [ -n "${{ vars.BACKEND_RESOURCE_GROUP }}" ] || (echo "Missing GitHub Environment variable: BACKEND_RESOURCE_GROUP" && exit 1)
@@ -84,14 +81,19 @@ jobs:
           [ -n "${{ secrets.REDIS_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: REDIS_PASSWORD" && exit 1)
           [ -n "${{ secrets.QDRANT_API_KEY }}" ] || (echo "Missing GitHub Environment secret: QDRANT_API_KEY" && exit 1)
 
-      - name: Azure Login
+      - name: Azure Login (client-secret only; no OIDC)
         uses: azure/login@v2
         with:
-          auth-type: SERVICE_PRINCIPAL
-          client-id: ${{ vars.ARM_CLIENT_ID }}
-          tenant-id: ${{ vars.ARM_TENANT_ID }}
-          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
-          client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set ARM_* for Terraform provider
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          echo "ARM_CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .clientId)" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .tenantId)" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .subscriptionId)" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=$(echo "$AZURE_CREDENTIALS" | jq -r .clientSecret)" >> $GITHUB_ENV
 
       - name: Copy environment tfvars
         run: |
