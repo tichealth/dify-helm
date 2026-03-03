@@ -1,6 +1,12 @@
-# Troubleshooting: Stuck Deployment & DNS
+# Troubleshooting: Stuck Deployment, Firewall & DNS
 
-When `./deploy.sh` hangs on Helm or pods fail with **NXDOMAIN** resolving the PostgreSQL private FQDN, use this guide.
+When `./deploy.sh` hangs on Helm, fails with **context deadline exceeded**, or pods fail with **NXDOMAIN** resolving the PostgreSQL FQDN, use this guide.
+
+---
+
+## 0. Azure PostgreSQL firewall (Helm times out / pods never Ready)
+
+If **`postgres_open_firewall_all = false`**, the Postgres firewall has no allow rules and Dify pods in AKS cannot connect → Helm times out (**context deadline exceeded**). **Fix:** set **`postgres_open_firewall_all = true`** in your environment tfvars (e.g. lite-prod) so Terraform creates the allow-all rule. For locked-down prod, add rules in Azure Portal and keep `false`.
 
 ---
 

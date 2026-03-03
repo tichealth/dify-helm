@@ -61,6 +61,10 @@ The workflow sets these as Terraform environment variables from the **active Git
 | `REDIS_PASSWORD` | `TF_VAR_redis_password` | **Secret** |
 | `QDRANT_API_KEY` | `TF_VAR_qdrant_api_key` | **Secret** |
 
+### PostgreSQL firewall
+
+Use **`postgres_open_firewall_all = true`** in the environment tfvars used by CI (e.g. lite-prod) so AKS pods and the runner can reach Postgres. Otherwise Helm can time out. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#0-azure-postgresql-firewall-helm-times-out--pods-never-ready).
+
 ### Set up AZURE_BLOB_ACCOUNT_NAME and AZURE_BLOB_ACCOUNT_KEY
 
 Terraform does **not** create the Storage Account. You need an existing Azure Storage account (any resource group in the same subscription).

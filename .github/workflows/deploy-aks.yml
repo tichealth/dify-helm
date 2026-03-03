@@ -135,18 +135,21 @@ jobs:
 
       - name: Deploy (all)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'all'
+        timeout-minutes: 60
         run: |
           chmod +x deploy.sh
           ./deploy.sh --all --auto-approve
 
       - name: Deploy (app only)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'app'
+        timeout-minutes: 60
         run: |
           chmod +x deploy.sh
           ./deploy.sh --app --auto-approve
 
       - name: Deploy (db only)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'db'
+        timeout-minutes: 60
         run: |
           chmod +x deploy.sh
           ./deploy.sh --db --auto-approve

@@ -37,7 +37,7 @@ postgres_storage_tier = "P15"  # 1,100 IOPS (higher performance)
 postgres_read_replica_count = 1  # 1 read replica for prod
 postgres_read_replica_zone = "2"  # Different AZ from primary (primary typically in zone 1)
 postgres_public_access = true  # Consider private access in prod if needed
-postgres_open_firewall_all = false  # Prod: restrict firewall rules
+postgres_open_firewall_all = true   # Set false only if you add rules in Azure Portal
 postgres_require_secure_transport = true
 
 # Redis Configuration

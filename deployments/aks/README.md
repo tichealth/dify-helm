@@ -17,6 +17,17 @@ cp environments/lite-prod.tfvars terraform.tfvars   # or prod-full.tfvars
 
 Secrets are not in the repo: add them to `terraform.tfvars` (git-ignored) or use `TF_VAR_*` env vars. See [PROD_DEPLOY.md](./PROD_DEPLOY.md#local-deploy).
 
+### Local dev from your laptop
+
+```bash
+cd deployments/aks
+cp environments/dev.tfvars terraform.tfvars
+# Set secrets: export TF_VAR_dify_secret_key=... TF_VAR_postgresql_password=... TF_VAR_redis_password=... TF_VAR_qdrant_api_key=...
+# If dev was deployed via CI, add backend.azurerm.tfvars (key = dev.terraform.tfstate) so you use the same state.
+az login && az account set --subscription "<id>"
+./deploy.sh --all --auto-approve
+```
+
 ## Deploy and environments
 
 - **[PROD_DEPLOY.md](./PROD_DEPLOY.md)** — Production deploy: lite vs full, local deploy, secrets, checklist

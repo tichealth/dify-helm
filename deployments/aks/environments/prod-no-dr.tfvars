@@ -30,7 +30,7 @@ postgres_version   = "16"
 postgres_sku_name  = "GP_Standard_D2ds_v5"
 postgres_storage_mb = 131072  # 128GB
 postgres_public_access = true
-postgres_open_firewall_all = false
+postgres_open_firewall_all = true   # Allow all so AKS/CI can reach Postgres
 postgres_require_secure_transport = true
 
 # Redis (redis_password via TF_VAR_* in CI)

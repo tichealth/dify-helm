@@ -31,7 +31,7 @@ postgres_version   = "16"
 postgres_sku_name  = "B_Standard_B1ms"  # Burstable, 1 vCore, ~32 GB included
 postgres_storage_mb = 32768             # 32 GB
 postgres_public_access = true
-postgres_open_firewall_all = false
+postgres_open_firewall_all = true   # Allow all IPs so AKS pods and CI runner can reach Postgres (same as dev)
 postgres_require_secure_transport = true
 
 # Redis (redis_password via TF_VAR_* in CI)
