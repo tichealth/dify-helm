@@ -349,6 +349,24 @@ done
         echo "   helm upgrade --install dify dify/dify -f values.yaml --namespace dify --create-namespace --timeout 45m --atomic --wait"
         exit 1
     fi
+
+    # Wait for at least one node Ready so Helm can schedule pods (CI: node pool may still be coming up)
+    echo -e "${YELLOW}Waiting for node(s) to be Ready...${NC}"
+    NODE_WAIT=0
+    while [ $NODE_WAIT -lt 600 ]; do
+        READY=$(kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready " || true)
+        if [ "${READY:-0}" -ge 1 ]; then
+            echo -e "${GREEN}✓ Node(s) Ready${NC}\n"
+            break
+        fi
+        echo "  Waiting for nodes... (${NODE_WAIT}s)"
+        sleep 15
+        NODE_WAIT=$((NODE_WAIT + 15))
+    done
+    if [ "${READY:-0}" -lt 1 ]; then
+        echo -e "${RED}Error: No Ready nodes after 10 min. Run: kubectl get nodes${NC}"
+        exit 1
+    fi
 else
     echo -e "${YELLOW}Step 4: Skipping cluster connectivity check (--db mode)${NC}\n"
 fi
