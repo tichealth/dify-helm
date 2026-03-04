@@ -49,7 +49,7 @@ From the JSON output: `appId` → clientId, `password` → clientSecret, `tenant
 
 ## Terraform / Dify (passed as TF_VAR_*)
 
-The workflow sets these as Terraform environment variables from the **active GitHub Environment’s** Variables and Secrets; they are never written into tfvars. Add them in each environment (dev, test, prod) with values for that env.
+The workflow sets these as Terraform environment variables from the **active GitHub Environment’s** Variables and Secrets; they are never written into tfvars. **deploy.sh** also reads these (TF_VAR_* or terraform.tfvars) and passes them to Helm so values.yaml has no real secrets. Add them in each environment (dev, test, prod) with values for that env.
 
 | Name | Purpose | Store as |
 |------|---------|----------|
@@ -59,7 +59,9 @@ The workflow sets these as Terraform environment variables from the **active Git
 | `DIFY_SECRET_KEY` | `TF_VAR_dify_secret_key` | **Secret** |
 | `POSTGRESQL_PASSWORD` | `TF_VAR_postgresql_password` | **Secret** |
 | `REDIS_PASSWORD` | `TF_VAR_redis_password` | **Secret** |
-| `QDRANT_API_KEY` | `TF_VAR_qdrant_api_key` | **Secret** |
+| `QDRANT_API_KEY` | `TF_VAR_qdrant_api_key` → Helm `externalQdrant.apiKey` | **Secret** | deploy.sh → Helm |
+
+**values.yaml** contains only placeholders; real values come from GitHub Secrets (CI) or terraform.tfvars / TF_VAR_* (local). See [Secrets for local runs](#secrets-for-local-runs).
 
 ### PostgreSQL firewall
 
@@ -76,7 +78,7 @@ Terraform does **not** create the Storage Account. You need an existing Azure St
 | **Terraform state** | `tfstate` | Terraform remote backend (state file per environment). Does **not** hold Dify data. |
 | **Dify file storage** | e.g. `difydata` | Dify app only; set via `azure_blob_container_name` in tfvars. |
 
-**Remote backend is enabled:** Terraform state is stored in the **tfstate** container (same storage account as above). The workflow runs `terraform init -reconfigure` with backend config. You need a **Variable** `BACKEND_RESOURCE_GROUP` = the resource group where the storage account lives (e.g. `rg-cme-prod`). State file key is `{environment}.terraform.tfstate` (e.g. `dev.terraform.tfstate`, `lite-prod.terraform.tfstate`).
+**Remote backend is enabled:** Terraform state is stored in the **tfstate** container (same storage account as above). The workflow runs `terraform init -reconfigure` with backend config. You need a **Variable** `BACKEND_RESOURCE_GROUP` = the resource group where the storage account lives (e.g. `rg-cme-prod`). State file key: `dev` → `dev.terraform.tfstate`, `test` → `test.terraform.tfstate`, **lite-prod and prod-full** → **`prod.terraform.tfstate`**.
 
 **Why Dify needs a container:** Dify uses object storage for **application file storage** — user uploads (documents, images), dataset files, and generated assets. The API and worker pods need a shared, persistent place for these files. Without a blob container, Dify would use local pod disk, which is not shared across pods and is lost on restart. So you need a **separate** container from `tfstate`: one for Terraform state, one for Dify data.
 
@@ -163,9 +165,27 @@ Copy each line’s value into the matching GitHub Secret. The script uses `opens
 
 **Note:** `AZURE_BLOB_ACCOUNT_KEY` comes from Azure (Storage account → Access keys), not from these generators.
 
+## Secrets for local runs
+
+For **local** runs (e.g. `./deploy.sh`), **deploy.sh** reads secrets from (in order):
+
+1. **Environment variables:** `TF_VAR_postgresql_password`, `TF_VAR_dify_secret_key`, `TF_VAR_redis_password`, `TF_VAR_qdrant_api_key`
+2. **terraform.tfvars:** if a TF_VAR is unset, deploy.sh parses `terraform.tfvars` in the same directory for the matching key.
+
+So you can either `export TF_VAR_...` in the shell or put the secrets in **terraform.tfvars** (do not commit that file). Required keys for Helm (so Dify works) are:
+
+| In terraform.tfvars (or TF_VAR_*) | Helm value | Required for |
+|-----------------------------------|------------|--------------|
+| `postgresql_password`             | externalPostgres.password | Azure Postgres + Dify API/worker/plugin-daemon |
+| `dify_secret_key`                 | global.appSecretKey      | Dify app signing/session |
+| `redis_password`                  | redis.auth.password      | Redis (in-cluster) |
+| `qdrant_api_key`                  | externalQdrant.apiKey    | Qdrant vector DB |
+
+Copy `environments/<env>.tfvars` to `terraform.tfvars`, then add the secret variables. See `environments/prod.tfvars.example` for a full example including placeholders for these and other optional vars (e.g. Azure blob for state).
+
 ## Terraform remote backend (local runs)
 
-For **local** runs (e.g. `./deploy.sh`), Terraform uses the same **azurerm** backend. Create `deployments/aks/backend.azurerm.tfvars` from `backend.azurerm.tfvars.example`, set `resource_group_name`, `storage_account_name`, `container_name` = `tfstate`, `key` (e.g. `dev.terraform.tfstate`), and `access_key` (same as Blob key). Do not commit `backend.azurerm.tfvars`. Then `deploy.sh` will run `terraform init -reconfigure -backend-config=backend.azurerm.tfvars` automatically.
+For **local** runs (e.g. `./deploy.sh`), Terraform uses the same **azurerm** backend. Create `deployments/aks/backend.azurerm.tfvars` from `backend.azurerm.tfvars.example`, set `resource_group_name`, `storage_account_name`, `container_name` = `tfstate`, `key` (e.g. `dev.terraform.tfstate` for dev, **`prod.terraform.tfstate`** for lite-prod or prod-full), and `access_key`. Do not commit `backend.azurerm.tfvars`. Then `deploy.sh` will run `terraform init -reconfigure -backend-config=backend.azurerm.tfvars` automatically.
 
 ## Optional
 

@@ -7,5 +7,5 @@
 resource_group_name  = "rg-cme-prod"
 storage_account_name  = "stcmedifyhelmprod"
 container_name        = "tfstate"
-key                   = "dev.terraform.tfstate"   # e.g. dev.terraform.tfstate, test.terraform.tfstate, prod.terraform.tfstate
+key                   = "prod.terraform.tfstate"  # dev → dev.terraform.tfstate; test → test.terraform.tfstate; lite-prod & prod-full → prod.terraform.tfstate
 access_key            = "REPLACE_WITH_YOUR_STORAGE_ACCOUNT_KEY"

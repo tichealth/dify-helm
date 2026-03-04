@@ -8,7 +8,6 @@ location     = "australiaeast"  # Sydney, Australia
 resource_group_name = ""
 
 # AKS
-kubernetes_version = null
 node_count         = 1
 vm_size            = "Standard_D2s_v5"
 

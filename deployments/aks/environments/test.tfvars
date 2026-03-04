@@ -8,7 +8,6 @@ location     = "australiaeast"
 resource_group_name = "rg-cme-test"
 
 # AKS - 1 node + optional spot pool
-kubernetes_version    = null
 node_count            = 1
 vm_size               = "Standard_D2s_v5"
 enable_spot_node_pool = true

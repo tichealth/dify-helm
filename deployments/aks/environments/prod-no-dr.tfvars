@@ -11,7 +11,6 @@ location     = "australiaeast"
 resource_group_name = "rg-cme-prod"
 
 # AKS
-kubernetes_version = null
 node_count         = 3
 vm_size            = "Standard_D4s_v5"
 enable_spot_node_pool = false

@@ -46,6 +46,9 @@ jobs:
     permissions:
       contents: read
     environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
+    outputs:
+      lb_ip: ${{ steps.dns.outputs.lb_ip }}
+      ingress_host: ${{ steps.dns.outputs.ingress_host }}
     defaults:
       run:
         working-directory: ${{ env.TF_DIR }}
@@ -110,7 +113,7 @@ jobs:
           resource_group_name  = "${{ vars.BACKEND_RESOURCE_GROUP }}"
           storage_account_name = "${{ vars.AZURE_BLOB_ACCOUNT_NAME }}"
           container_name       = "tfstate"
-          key                  = "${{ inputs.environment }}.terraform.tfstate"
+          key                  = "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod.terraform.tfstate' || format('{0}.terraform.tfstate', inputs.environment) }}"
           access_key           = "${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}"
           EOF
           chmod 600 backend.azurerm.tfvars
@@ -130,7 +133,7 @@ jobs:
             -backend-config="resource_group_name=${{ vars.BACKEND_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" \
             -backend-config="container_name=tfstate" \
-            -backend-config="key=${{ inputs.environment }}.terraform.tfstate" \
+            -backend-config="key=${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod.terraform.tfstate' || format('{0}.terraform.tfstate', inputs.environment) }}" \
             -backend-config="access_key=${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}"
 
       - name: Deploy (all)
@@ -146,6 +149,40 @@ jobs:
         run: |
           chmod +x deploy.sh
           ./deploy.sh --app --auto-approve
+
+      - name: Output DNS configuration (IP for first-time setup)
+        id: dns
+        if: inputs.action == 'deploy' && (inputs.deploy_mode == 'all' || inputs.deploy_mode == 'app')
+        run: |
+          CLUSTER=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
+          RG=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
+          if [ -z "$CLUSTER" ] || [ -z "$RG" ]; then
+            echo "Could not get cluster/resource group (Terraform state missing?). Skip DNS step."
+            exit 0
+          fi
+          az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
+          LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -z "$LB_IP" ]; then
+            LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+          fi
+          case "${{ inputs.environment }}" in
+            lite-prod|prod-full) INGRESS_HOST="dify-prod.tichealth.com.au" ;;
+            dev)                 INGRESS_HOST="dify-dev.tichealth.com.au" ;;
+            test)                INGRESS_HOST="dify-test.tichealth.com.au" ;;
+            *)                  INGRESS_HOST="dify-${{ inputs.environment }}.tichealth.com.au" ;;
+          esac
+          echo ""
+          echo "=============================================="
+          echo "DNS: Point your domain to this address"
+          echo "=============================================="
+          echo "Ingress host: $INGRESS_HOST"
+          echo "IP/Hostname:  ${LB_IP:-<pending>}"
+          echo ""
+          echo "Create DNS record:  $INGRESS_HOST  ->  ${LB_IP:-<IP from kubectl get svc -n ingress-nginx>}"
+          echo "=============================================="
+          echo ""
+          echo "lb_ip=$LB_IP" >> $GITHUB_OUTPUT
+          echo "ingress_host=$INGRESS_HOST" >> $GITHUB_OUTPUT
 
       - name: Deploy (db only)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'db'

@@ -12,7 +12,6 @@ location     = "australiaeast"
 resource_group_name = "rg-cme-prod"
 
 # AKS - single node (no multi-node HA)
-kubernetes_version    = null
 node_count            = 1
 vm_size               = "Standard_D4s_v5"  # or Standard_D2s_v5 for lower cost
 enable_spot_node_pool = false
@@ -32,7 +31,7 @@ postgres_sku_name  = "B_Standard_B1ms"  # Burstable, 1 vCore, ~32 GB included
 postgres_storage_mb = 32768             # 32 GB
 postgres_public_access = true
 postgres_open_firewall_all = true   # Allow all IPs so AKS pods and CI runner can reach Postgres (same as dev)
-postgres_require_secure_transport = true
+postgres_require_secure_transport = false  # Allow non-SSL for now; set true + add SSL env in values when enabling SSL
 
 # Redis (redis_password via TF_VAR_* in CI)
 redis_chart_version = "19.6.2"

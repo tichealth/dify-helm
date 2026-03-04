@@ -4,6 +4,9 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TF_DIR="$SCRIPT_DIR"
+
 # Parse arguments
 AUTO_APPROVE=false
 while [[ $# -gt 0 ]]; do
@@ -42,6 +45,12 @@ if [ "$AUTO_APPROVE" != "true" ]; then
     fi
 fi
 
+cd "$TF_DIR" || exit 1
+if [ -f "backend.azurerm.tfvars" ]; then
+    terraform init -reconfigure -backend-config=backend.azurerm.tfvars
+else
+    terraform init
+fi
 terraform destroy -auto-approve
 
 echo ""

@@ -66,132 +66,47 @@ on_err() {
 }
 trap on_err ERR
 
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Dify Hybrid Deployment (Terraform + Helm)${NC}"
-echo -e "${GREEN}========================================${NC}\n"
+echo -e "${GREEN}Dify AKS (Terraform + Helm)${NC}\n"
 
-# Display deployment mode
 case $DEPLOY_MODE in
-    db)
-        echo -e "${YELLOW}Deployment Mode: DATABASE ONLY${NC}"
-        echo "  - Will deploy/update: PostgreSQL, VNet, Management Subnet"
-        echo "  - Will skip: AKS, Helm deployments"
-        echo ""
-        ;;
-    app)
-        echo -e "${YELLOW}Deployment Mode: APPLICATION ONLY${NC}"
-        echo "  - Will deploy/update: Helm charts (ingress, cert-manager, Dify)"
-        echo "  - Will skip: Terraform infrastructure (assumes AKS/PostgreSQL exist)"
-        echo ""
-        ;;
-    all)
-        echo -e "${YELLOW}Deployment Mode: FULL DEPLOYMENT${NC}"
-        echo "  - Will deploy/update: All infrastructure and applications"
-        echo ""
-        ;;
+    db)   echo -e "${YELLOW}Mode: db only${NC}\n" ;;
+    app)  echo -e "${YELLOW}Mode: app only (Helm)${NC}\n" ;;
+    all)  echo -e "${YELLOW}Mode: full${NC}\n" ;;
 esac
 
-# Step 0: Check prerequisites
-echo -e "${YELLOW}Step 0: Checking prerequisites...${NC}"
-
+# Prerequisites
 check_and_install_kubectl() {
     if command -v kubectl &> /dev/null; then
-        echo "  ✓ kubectl is installed ($(kubectl version --client --short 2>/dev/null | cut -d' ' -f3 || echo 'unknown'))"
         return 0
     fi
+    echo "  Installing kubectl..."
     
-    echo "  kubectl not found. Installing..."
-    
-    # Try curl method (works best on WSL/Ubuntu)
     if command -v curl &> /dev/null; then
-        echo "  Installing kubectl via curl..."
         KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+        curl -sLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
         chmod +x kubectl
-        sudo mv kubectl /usr/local/bin/kubectl || {
-            echo "  Attempting to install to ~/.local/bin (no sudo required)..."
-            mkdir -p ~/.local/bin
-            mv kubectl ~/.local/bin/kubectl
-            export PATH="$HOME/.local/bin:$PATH"
-        }
-    # Try snap as fallback (requires --classic flag)
+        sudo mv kubectl /usr/local/bin/kubectl 2>/dev/null || { mkdir -p ~/.local/bin; mv kubectl ~/.local/bin/kubectl; export PATH="$HOME/.local/bin:$PATH"; }
     elif command -v snap &> /dev/null; then
-        echo "  Installing kubectl via snap (requires --classic flag)..."
         sudo snap install kubectl --classic
     else
-        echo -e "${RED}  Error: Cannot install kubectl automatically. Please install it manually:${NC}"
-        echo "    curl -LO \"https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\""
-        echo "    chmod +x kubectl && sudo mv kubectl /usr/local/bin/"
-        echo "    or: sudo snap install kubectl --classic"
-        return 1
+        echo -e "${RED}kubectl not found. Install manually.${NC}"; return 1
     fi
-    
-    if command -v kubectl &> /dev/null; then
-        echo "  ✓ kubectl installed successfully"
-        return 0
-    else
-        echo -e "${YELLOW}  Warning: kubectl may not be in PATH. Adding ~/.local/bin to PATH...${NC}"
-        export PATH="$HOME/.local/bin:$PATH"
-        if command -v kubectl &> /dev/null; then
-            echo "  ✓ kubectl found in ~/.local/bin"
-            return 0
-        else
-            echo -e "${RED}  Error: kubectl installation failed or not found in PATH${NC}"
-            return 1
-        fi
-    fi
+    command -v kubectl &> /dev/null || { export PATH="$HOME/.local/bin:$PATH"; command -v kubectl &> /dev/null || { echo -e "${RED}kubectl install failed${NC}"; return 1; }; }
+    return 0
 }
 
 check_and_install_helm() {
-    if command -v helm &> /dev/null; then
-        echo "  ✓ helm is installed ($(helm version --short 2>/dev/null || echo 'unknown'))"
-        return 0
-    fi
-    
-    echo "  helm not found. Installing..."
-    
-    # Use official Helm install script (works best)
-    if command -v curl &> /dev/null; then
-        echo "  Installing helm via official install script..."
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    else
-        echo -e "${RED}  Error: Cannot install helm automatically. Please install it manually:${NC}"
-        echo "    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
-        return 1
-    fi
-    
-    if command -v helm &> /dev/null; then
-        echo "  ✓ helm installed successfully"
-        return 0
-    else
-        echo -e "${YELLOW}  Warning: helm may not be in PATH. Adding ~/.local/bin to PATH...${NC}"
-        export PATH="$HOME/.local/bin:$PATH"
-        if command -v helm &> /dev/null; then
-            echo "  ✓ helm found in ~/.local/bin"
-            return 0
-        else
-            echo -e "${RED}  Error: helm installation failed or not found in PATH${NC}"
-            return 1
-        fi
-    fi
+    command -v helm &> /dev/null && return 0
+    echo "  Installing helm..."
+    command -v curl &> /dev/null && curl -s https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash || { echo -e "${RED}helm: install manually.${NC}"; return 1; }
+    export PATH="$HOME/.local/bin:$PATH"
+    command -v helm &> /dev/null || { echo -e "${RED}helm install failed${NC}"; return 1; }
+    return 0
 }
 
-# Check required tools
 MISSING_TOOLS=0
-
-if ! command -v terraform &> /dev/null; then
-    echo -e "${RED}  ✗ terraform is not installed${NC}"
-    MISSING_TOOLS=1
-else
-    echo "  ✓ terraform is installed"
-fi
-
-if ! command -v az &> /dev/null; then
-    echo -e "${RED}  ✗ az (Azure CLI) is not installed${NC}"
-    MISSING_TOOLS=1
-else
-    echo "  ✓ Azure CLI is installed"
-fi
+command -v terraform &> /dev/null || { echo -e "${RED}terraform required${NC}"; MISSING_TOOLS=1; }
+command -v az &> /dev/null || { echo -e "${RED}az (Azure CLI) required${NC}"; MISSING_TOOLS=1; }
 
 if ! check_and_install_kubectl; then
     MISSING_TOOLS=1
@@ -204,21 +119,14 @@ fi
 # Ensure ~/.local/bin is in PATH for this session
 export PATH="$HOME/.local/bin:$PATH"
 
-if [ $MISSING_TOOLS -eq 1 ]; then
-    echo -e "${RED}Error: Some prerequisites are missing. Please install them and try again.${NC}"
-    exit 1
-fi
+[ $MISSING_TOOLS -eq 1 ] && { echo -e "${RED}Missing prerequisites.${NC}"; exit 1; }
 
-echo -e "${GREEN}✓ All prerequisites met${NC}\n"
-
-# Step 1: Initialize Terraform
-echo -e "${YELLOW}Step 1: Initializing Terraform...${NC}"
+# Terraform
 cd "$TF_DIR" || exit 1
+echo -e "${YELLOW}Step 1: Terraform init${NC}"
 if [ -f "backend.azurerm.tfvars" ]; then
-    echo "Using remote backend (backend.azurerm.tfvars)"
     terraform init -reconfigure -backend-config=backend.azurerm.tfvars
 else
-    echo "No backend.azurerm.tfvars; using default backend (local or as configured)"
     terraform init
 fi
 echo -e "${GREEN}✓ Terraform initialized${NC}\n"
@@ -332,21 +240,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
 done
 
     if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-        echo -e "${RED}Error: Cannot connect to cluster after 10 minutes${NC}"
-        echo ""
-        echo "Troubleshooting steps:"
-        echo "1. Check cluster status:"
-        echo "   az aks show --resource-group $RG_NAME --name $CLUSTER_NAME --query provisioningState"
-        echo ""
-        echo "2. Try connecting manually:"
-        echo "   kubectl cluster-info"
-        echo ""
-        echo "3. If cluster is ready but kubectl fails, check credentials:"
-        echo "   az aks get-credentials --resource-group $RG_NAME --name $CLUSTER_NAME --overwrite-existing"
-        echo ""
-        echo "4. Once connected, continue deployment manually:"
-        echo "   helm repo add dify https://borispolonsky.github.io/dify-helm && helm repo update"
-        echo "   helm upgrade --install dify dify/dify -f values.yaml --namespace dify --create-namespace --timeout 45m --atomic --wait"
+        echo -e "${RED}Error: Cannot connect to cluster after 10 minutes. Run: az aks get-credentials -g $RG_NAME -n $CLUSTER_NAME --overwrite-existing${NC}"
         exit 1
     fi
 
@@ -414,6 +308,18 @@ if [ "$DEPLOY_MODE" != "db" ]; then
       --wait --timeout 5m
     echo -e "${GREEN}✓ cert-manager installed${NC}\n"
 
+    # Step 8b: CoreDNS patch so cert-manager can resolve public domains (e.g. dify-prod.tichealth.com.au)
+    echo -e "${YELLOW}Step 8b: Applying CoreDNS patch (public DNS for cert-manager)...${NC}"
+    if [ -f "$SCRIPT_DIR/coredns-patch.yaml" ]; then
+        kubectl apply -f "$SCRIPT_DIR/coredns-patch.yaml"
+        kubectl -n kube-system rollout restart deployment coredns
+        echo "Waiting for CoreDNS to be ready..."
+        kubectl -n kube-system rollout status deployment coredns --timeout=60s
+        echo -e "${GREEN}✓ CoreDNS patch applied${NC}\n"
+    else
+        echo -e "${YELLOW}⚠ coredns-patch.yaml not found, skipping (cert-manager may fail to resolve your domain)${NC}\n"
+    fi
+
     # Step 9: Create ClusterIssuer (Let's Encrypt)
     echo -e "${YELLOW}Step 9: Creating ClusterIssuer...${NC}"
     kubectl apply -f - <<EOF
@@ -450,32 +356,79 @@ EOF
     echo -e "${GREEN}✓ ClusterIssuer applied${NC}\n"
 
     # Step 10: Deploy Dify with Helm
-    echo -e "${YELLOW}Step 10: Deploying Dify with Helm...${NC}"
-    echo "This will deploy Dify and all dependencies (Redis, PostgreSQL, etc.)"
+    echo -e "${YELLOW}Step 10: Deploying Dify...${NC}"
     if [ "$AUTO_APPROVE" != "true" ]; then
         read -p "Continue? (y/n) " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Deployment cancelled."
-            exit 1
-        fi
+        [[ $REPLY =~ ^[Yy]$ ]] || { echo "Cancelled."; exit 1; }
     fi
 
     VALUES_ARG=""
-    if [ -f "$VALUES_FILE" ]; then
-        VALUES_ARG="-f $VALUES_FILE"
-        echo "Using values file: $VALUES_FILE"
-    else
-        echo "No values file specified, using chart defaults"
-    fi
+    [[ -f "$VALUES_FILE" ]] && VALUES_ARG="-f $VALUES_FILE"
 
-    # When using Azure PostgreSQL, pass FQDN from Terraform so we never hardcode it
+    # Postgres FQDN + secrets from TF_VAR_* or terraform.tfvars
     SET_POSTGRES=""
     POSTGRES_FQDN=$(cd "$TF_DIR" && terraform output -raw postgresql_fqdn 2>/dev/null || true)
     if [[ -n "$POSTGRES_FQDN" && "$POSTGRES_FQDN" != *"N/A"* ]]; then
         SET_POSTGRES="--set externalPostgres.address=$POSTGRES_FQDN"
-        echo "Using Azure PostgreSQL FQDN from Terraform: $POSTGRES_FQDN"
     fi
+
+    # Secrets: from TF_VAR_* (CI/local) or terraform.tfvars — same source as Terraform; no secrets in values.yaml
+    get_secret() {
+        local env_var="$1"
+        local tfvars_key="$2"
+        local val="${!env_var:-}"
+        if [[ -z "$val" && -f "$TF_DIR/terraform.tfvars" ]]; then
+            val=$(grep -E "^${tfvars_key}\s*=" "$TF_DIR/terraform.tfvars" 2>/dev/null | sed -n 's/^[^=]*=\s*"\(.*\)"\s*$/\1/p' | sed 's/\\"/"/g')
+        fi
+        printf '%s' "$val"
+    }
+    SECRETS_DIR=$(mktemp -d)
+    trap 'rm -rf "$SECRETS_DIR"' EXIT
+
+    POSTGRESQL_PASSWORD=$(get_secret TF_VAR_postgresql_password postgresql_password)
+    SET_POSTGRES_PASSWORD=""
+    if [[ -n "$POSTGRESQL_PASSWORD" ]]; then
+        printf '%s' "$POSTGRESQL_PASSWORD" > "$SECRETS_DIR/pg_pass"
+        SET_POSTGRES_PASSWORD="--set-file externalPostgres.password=$SECRETS_DIR/pg_pass"
+    fi
+    DIFY_SECRET_KEY=$(get_secret TF_VAR_dify_secret_key dify_secret_key)
+    SET_DIFY_SECRET=""
+    if [[ -n "$DIFY_SECRET_KEY" ]]; then
+        printf '%s' "$DIFY_SECRET_KEY" > "$SECRETS_DIR/dify_secret"
+        SET_DIFY_SECRET="--set-file global.appSecretKey=$SECRETS_DIR/dify_secret"
+    fi
+    REDIS_PASSWORD=$(get_secret TF_VAR_redis_password redis_password)
+    SET_REDIS_PASSWORD=""
+    if [[ -n "$REDIS_PASSWORD" ]]; then
+        printf '%s' "$REDIS_PASSWORD" > "$SECRETS_DIR/redis_pass"
+        SET_REDIS_PASSWORD="--set-file redis.auth.password=$SECRETS_DIR/redis_pass"
+    fi
+    QDRANT_API_KEY=$(get_secret TF_VAR_qdrant_api_key qdrant_api_key)
+    SET_QDRANT_KEY=""
+    if [[ -n "$QDRANT_API_KEY" ]]; then
+        printf '%s' "$QDRANT_API_KEY" > "$SECRETS_DIR/qdrant_key"
+        SET_QDRANT_KEY="--set-file externalQdrant.apiKey=$SECRETS_DIR/qdrant_key"
+    fi
+    if [[ -n "$SET_POSTGRES_PASSWORD$SET_DIFY_SECRET$SET_REDIS_PASSWORD$SET_QDRANT_KEY" ]]; then
+        echo "Secrets from TF_VAR_* or terraform.tfvars"
+    fi
+
+    # Ingress host: prod (lite or full) always uses dify-prod; dev/test use dify-dev / dify-test
+    PROJECT_NAME=$(grep -E '^project_name\s*=' "$TF_DIR/terraform.tfvars" 2>/dev/null | sed -n 's/.*=\s*"\([^"]*\)".*/\1/p' || true)
+    if [[ "$PROJECT_NAME" == *"prod"* ]]; then
+        INGRESS_HOST="dify-prod.tichealth.com.au"
+    elif [[ "$PROJECT_NAME" == *"dev"* ]]; then
+        INGRESS_HOST="dify-dev.tichealth.com.au"
+    elif [[ "$PROJECT_NAME" == *"test"* ]]; then
+        INGRESS_HOST="dify-test.tichealth.com.au"
+    else
+        INGRESS_HOST="${PROJECT_NAME}.tichealth.com.au"
+    fi
+    BASE_URL="https://$INGRESS_HOST"
+    SET_INGRESS="--set ingress.hosts[0].host=$INGRESS_HOST --set ingress.tls[0].hosts[0]=$INGRESS_HOST"
+    # Force Dify frontend/API to use HTTPS URLs (avoids "not secure" / mixed content)
+    SET_DOMAINS="--set global.consoleWebDomain=$BASE_URL --set global.consoleApiDomain=$BASE_URL --set global.serviceApiDomain=$BASE_URL --set global.appApiDomain=$BASE_URL --set global.appWebDomain=$BASE_URL --set global.filesDomain=$BASE_URL --set global.triggerDomain=$BASE_URL"
 
     helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
         --namespace "$NAMESPACE" \
@@ -483,109 +436,42 @@ EOF
         --timeout 45m \
         --atomic \
         --wait \
-        $VALUES_ARG $SET_POSTGRES
+        $VALUES_ARG $SET_POSTGRES $SET_POSTGRES_PASSWORD $SET_DIFY_SECRET $SET_REDIS_PASSWORD $SET_QDRANT_KEY $SET_INGRESS $SET_DOMAINS
 
     echo -e "${GREEN}✓ Dify deployed${NC}\n"
 
-    # Step 11: Wait for services to be ready
-    echo -e "${YELLOW}Step 11: Waiting for services to be ready...${NC}"
     kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true
     kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-web -n "$NAMESPACE" || true
 
-    echo -e "${GREEN}✓ Services are ready${NC}\n"
+    [ -f "$SCRIPT_DIR/fix-nsg-rules.sh" ] && { chmod +x "$SCRIPT_DIR/fix-nsg-rules.sh"; "$SCRIPT_DIR/fix-nsg-rules.sh" || true; }
 
-    # Step 12: Update NSG rules for LoadBalancer access
-    echo -e "${YELLOW}Step 12: Updating NSG rules for LoadBalancer...${NC}"
-    if [ -f "$SCRIPT_DIR/fix-nsg-rules.sh" ]; then
-        chmod +x "$SCRIPT_DIR/fix-nsg-rules.sh"
-        "$SCRIPT_DIR/fix-nsg-rules.sh" || echo -e "${YELLOW}⚠ NSG rule update failed${NC}"
-    else
-        echo -e "${YELLOW}⚠ fix-nsg-rules.sh not found, skipping${NC}"
-    fi
-    echo ""
-
-    # Step 13: Display deployment status
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}Deployment Complete!${NC}"
-    echo -e "${GREEN}========================================${NC}\n"
-
-    echo "Cluster: $CLUSTER_NAME"
-    echo "Namespace: $NAMESPACE"
-    echo "Release: $RELEASE_NAME"
-    echo ""
-
-    echo "Pods:"
+    echo -e "\n${GREEN}Deployment complete.${NC}"
     kubectl get pods -n "$NAMESPACE"
     echo ""
 
-    echo "Services:"
-    kubectl get svc -n "$NAMESPACE"
-    echo ""
-
-    echo "To get service URLs:"
-    echo "  kubectl get svc -n $NAMESPACE"
-    echo ""
-
-    # Step 14: Get LoadBalancer IP address (ingress)
-    echo -e "${YELLOW}Step 14: Getting LoadBalancer IP address...${NC}"
+    # LoadBalancer IP for DNS
     LB_IP=""
-    SERVICE_NAMESPACE="ingress-nginx"
-    SERVICE_NAME="ingress-nginx-controller"
-
-    echo "Waiting for LoadBalancer IP to be assigned (this may take 1-2 minutes)..."
-    MAX_WAIT=120  # 2 minutes
+    MAX_WAIT=120
     WAIT_COUNT=0
     while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-        LB_IP=$(kubectl get svc -n "$SERVICE_NAMESPACE" "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-        if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ] && [ "$LB_IP" != "<pending>" ]; then
-            break
-        fi
+        LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        [[ -n "$LB_IP" && "$LB_IP" != "<pending>" ]] && break
         sleep 5
         WAIT_COUNT=$((WAIT_COUNT + 5))
-        if [ $((WAIT_COUNT % 30)) -eq 0 ]; then
-            echo "  Still waiting for IP... ($WAIT_COUNT seconds elapsed)"
-        fi
     done
 
-    if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ] && [ "$LB_IP" != "<pending>" ]; then
-        echo -e "${GREEN}✓ LoadBalancer IP obtained${NC}\n"
-        echo -e "${GREEN}========================================${NC}"
-        echo -e "${GREEN}LoadBalancer IP Address${NC}"
-        echo -e "${GREEN}========================================${NC}"
-        echo ""
-        echo "IP Address: $LB_IP"
-        echo ""
-        echo "Access URLs:"
-        echo "  HTTP:  http://$LB_IP"
-        echo "  HTTPS: https://dify-dev.tichealth.com.au (after DNS configured)"
-        echo ""
-        echo "Next Steps:"
-        echo "  1. Wait 1-2 minutes for NSG rules to propagate"
-        echo "  2. Configure DNS: dify-dev.tichealth.com.au -> $LB_IP"
-        echo "  3. Wait for cert-manager to issue TLS, then test HTTPS"
-        echo ""
+    if [[ -n "$LB_IP" && "$LB_IP" != "<pending>" ]]; then
+        echo -e "${GREEN}DNS: $INGRESS_HOST -> $LB_IP${NC}"
+        echo "  Add A record, then https://$INGRESS_HOST (cert-manager will issue TLS)"
     else
-        echo -e "${YELLOW}⚠ LoadBalancer IP is still pending${NC}"
-        echo "Check status with: kubectl get svc -n $SERVICE_NAMESPACE $SERVICE_NAME"
-        echo ""
+        echo -e "${YELLOW}LoadBalancer IP pending. Check: kubectl get svc -n ingress-nginx ingress-nginx-controller${NC}"
     fi
 else
     # --db mode: Show database information
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN}Database Deployment Complete!${NC}"
-    echo -e "${GREEN}========================================${NC}\n"
-    
     POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn 2>/dev/null || echo "N/A")
-    VNET_ID=$(terraform output -raw vnet_id 2>/dev/null || echo "N/A")
-    MANAGEMENT_SUBNET_ID=$(terraform output -raw management_subnet_id 2>/dev/null || echo "N/A")
-    
-    echo "PostgreSQL FQDN: $POSTGRES_FQDN"
-    echo "VNet ID: $VNET_ID"
-    if [ "$MANAGEMENT_SUBNET_ID" != "N/A" ]; then
-        echo "Management Subnet ID: $MANAGEMENT_SUBNET_ID"
-        echo ""
-        echo "You can now create VMs in the management subnet to access PostgreSQL."
-        echo "See MANAGEMENT_SUBNET_GUIDE.md for instructions."
-    fi
-    echo ""
+    echo -e "${GREEN}DB complete.${NC} PostgreSQL FQDN: $POSTGRES_FQDN"
+    terraform output -raw vnet_id &>/dev/null && echo "VNet: $(terraform output -raw vnet_id)"
+    echo "Next: ./deploy.sh --app --auto-approve"
 fi

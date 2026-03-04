@@ -19,7 +19,7 @@ Single index for Dify AKS deployment docs.
 |-----|--------|
 | [OPERATIONS.md](./OPERATIONS.md) | How to get: PostgreSQL FQDN, Dify endpoint (IP/domain), Azure Blob key |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Stuck deployment and DNS (NXDOMAIN) fixes |
-| [HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md) | HTTPS/TLS setup, cert-manager, DNS |
+| [HTTPS_SETUP_GUIDE.md](./HTTPS_SETUP_GUIDE.md) | HTTPS verification and troubleshooting (deploy.sh does setup) |
 
 ## Infrastructure and cost
 
@@ -46,7 +46,6 @@ Single index for Dify AKS deployment docs.
 | [UPGRADE_GUIDE.md](./UPGRADE_GUIDE.md) | Upgrading Dify versions on AKS |
 | [DOCKER_COMPOSE_COMPARISON.md](./DOCKER_COMPOSE_COMPARISON.md) | Helm vs docker-compose config alignment |
 | [CHANGELOG.md](./CHANGELOG.md) | Deployment changes over time |
-| [CHANGES_TO_PROPAGATE.md](./CHANGES_TO_PROPAGATE.md) | Checklist: propagate dev changes to test/prod |
 
 ## Quick reference
 

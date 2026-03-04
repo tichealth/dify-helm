@@ -1,3 +1,6 @@
+# Not used by deploy.sh. deploy.sh applies coredns-patch.yaml (forward to 8.8.8.8/1.1.1.1 for cert-manager).
+# This file: Azure DNS (168.63.129.16) — use only if you prefer not to use the patch.
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:

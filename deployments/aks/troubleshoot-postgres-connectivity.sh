@@ -68,8 +68,9 @@ echo ""
 # Test PostgreSQL connectivity from a pod
 echo "=== Testing PostgreSQL Connectivity ==="
 echo "Creating test pod..."
-PGPASSWORD=$(terraform output -raw postgresql_password 2>/dev/null || echo "difyai123456")
-PGUSER=$(terraform output -raw postgresql_username 2>/dev/null || echo "difyadmin")
+# Terraform does not output passwords. Set PGPASSWORD (and optionally PGUSER) in the environment.
+PGPASSWORD="${PGPASSWORD:?Set PGPASSWORD for Postgres (e.g. from your terraform.tfvars or TF_VAR_postgresql_password)}"
+PGUSER="${PGUSER:-$(terraform output -raw postgresql_username 2>/dev/null || echo 'difyadmin')}"
 
 kubectl run postgres-conn-test \
     --image=postgres:16 \

@@ -2,3 +2,10 @@
 /.idea/*
 .vscode
 .DS_Store
+
+# Terraform secrets (never commit)
+**/terraform.tfvars*
+**/backend.azurerm.tfvars*
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*

@@ -9,7 +9,6 @@ location     = "eastus"
 resource_group_name = ""
 
 # AKS
-kubernetes_version = null  # Use latest if null
 node_count         = 1
 vm_size            = "Standard_D4s_v5"
 

@@ -14,12 +14,6 @@ variable "azure_subscription_id" {
   default     = "cce1d8e5-9a56-4bb4-ad7d-9c17aaa74482"
 }
 
-variable "kubernetes_version" {
-  description = "AKS Kubernetes version. Leave empty to use default."
-  type        = string
-  default     = null
-}
-
 variable "node_count" {
   description = "AKS default node pool count"
   type        = number
@@ -75,32 +69,7 @@ variable "tags" {
   default     = {}
 }
 
-# Dify images
-variable "dify_api_image" {
-  type        = string
-  default     = "langgenius/dify-api:0.11.0"
-  description = "Dify API image"
-}
-
-variable "dify_web_image" {
-  type        = string
-  default     = "langgenius/dify-web:0.11.0"
-  description = "Dify Web image"
-}
-
-variable "dify_sandbox_image" {
-  type        = string
-  default     = "langgenius/dify-sandbox:0.2.1"
-  description = "Dify Sandbox image"
-}
-
-variable "dify_plugin_daemon_image" {
-  type        = string
-  default     = "langgenius/dify-plugin-daemon:0.5.2-local"
-  description = "Dify Plugin Daemon image"
-}
-
-# Storage: Azure Blob (recommended for AKS)
+# Storage: Azure Blob (for Dify storage; deploy.sh/tfvars single source – not used in main.tf)
 variable "azure_blob_account_name" {
   type        = string
   description = "Azure Storage account name for Blob"
@@ -136,13 +105,6 @@ variable "dify_init_password" {
   sensitive   = true
 }
 
-variable "plugin_daemon_key" {
-  description = "Plugin Daemon server key"
-  type        = string
-  default     = "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
-  sensitive   = true
-}
-
 variable "plugin_database_name" {
   description = "Plugin daemon database name"
   type        = string
@@ -150,11 +112,6 @@ variable "plugin_database_name" {
 }
 
 # Postgres config
-variable "postgresql_chart_version" {
-  type        = string
-  default     = "15.5.23"
-}
-
 variable "postgresql_username" {
   type        = string
   default     = "postgres"
@@ -199,6 +156,12 @@ variable "postgres_storage_mb" {
   description = "Azure PostgreSQL storage in MB"
   type        = number
   default     = 32768
+}
+
+variable "postgres_storage_tier" {
+  description = "Azure PostgreSQL storage performance tier (e.g. P4, P6, P10, P15, P20, P30). Leave null for Azure default based on storage_mb."
+  type        = string
+  default     = null
 }
 
 variable "postgres_public_access" {
@@ -247,14 +210,8 @@ variable "management_subnet_address_prefixes" {
 # Redis config
 variable "redis_chart_version" {
   type        = string
-  default     = "18.1.2" # Stable version - 19.6.2 has image tag issues
-  description = "Redis Helm chart version. Use 18.1.2 for stability (matches Dify-helm-chart-AKS reference)"
-}
-
-variable "enable_redis_debug" {
-  description = "Enable debug output for Redis deployment (runs kubectl commands)"
-  type        = bool
-  default     = false
+  default     = "18.1.2"
+  description = "Redis Helm chart version (referenced in tfvars; deploy/Helm use values.yaml)"
 }
 
 variable "redis_password" {
@@ -272,48 +229,4 @@ variable "qdrant_chart_version" {
 variable "qdrant_api_key" {
   type        = string
   sensitive   = true
-}
-
-# Kubernetes provider configuration
-variable "kubeconfig_path" {
-  description = "Path to kubeconfig file. Defaults to ~/.kube/config"
-  type        = string
-  default     = "~/.kube/config"
-}
-
-variable "kubeconfig_context" {
-  description = "Kubernetes context name to use. If null, uses current context from kubeconfig. Set this explicitly to avoid context switching issues."
-  type        = string
-  default     = null
-}
-
-# Ingress configuration
-variable "enable_ingress" {
-  description = "Enable Ingress resource with cert-manager for HTTPS"
-  type        = bool
-  default     = false
-}
-
-variable "ingress_host" {
-  description = "Hostname for Ingress (e.g., dify.example.com)"
-  type        = string
-  default     = ""
-}
-
-variable "ingress_class" {
-  description = "Ingress class name (e.g., nginx, traefik)"
-  type        = string
-  default     = "nginx"
-}
-
-variable "ingress_tls_secret_name" {
-  description = "Name of TLS secret for Ingress (cert-manager will create this)"
-  type        = string
-  default     = "dify-tls"
-}
-
-variable "cert_manager_enabled" {
-  description = "Install cert-manager via Helm (requires cluster-admin permissions)"
-  type        = bool
-  default     = false
 }

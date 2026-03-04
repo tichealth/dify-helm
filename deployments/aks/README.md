@@ -23,7 +23,7 @@ Secrets are not in the repo: add them to `terraform.tfvars` (git-ignored) or use
 cd deployments/aks
 cp environments/dev.tfvars terraform.tfvars
 # Set secrets: export TF_VAR_dify_secret_key=... TF_VAR_postgresql_password=... TF_VAR_redis_password=... TF_VAR_qdrant_api_key=...
-# If dev was deployed via CI, add backend.azurerm.tfvars (key = dev.terraform.tfstate) so you use the same state.
+# If deployed via CI, add backend.azurerm.tfvars with key = dev.terraform.tfstate (dev) or prod.terraform.tfstate (lite-prod/prod-full) so you use the same state.
 az login && az account set --subscription "<id>"
 ./deploy.sh --all --auto-approve
 ```
@@ -62,9 +62,7 @@ kubectl get pods -n dify
 kubectl get svc -n ingress-nginx ingress-nginx-controller   # LoadBalancer IP
 ```
 
-## Full doc list
-
-See **[DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)** for the complete list (teardown, upgrade, PostgreSQL, changelog, etc.).
+See **[DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)** for all docs.
 
 ## Architecture (summary)
 
