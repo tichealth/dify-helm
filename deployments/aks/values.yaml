@@ -16,11 +16,11 @@ global:
 image:
   api:
     repository: langgenius/dify-api
-    tag: "1.13.0"
+    tag: "1.12.1"
     pullPolicy: IfNotPresent
   web:
     repository: langgenius/dify-web
-    tag: "1.13.0"
+    tag: "1.12.1"
     pullPolicy: IfNotPresent
   sandbox:
     repository: langgenius/dify-sandbox
