@@ -110,6 +110,17 @@ image:
     # pullSecrets:
     #   - myRegistryKeySecretName
 
+  agentbox:
+    repository: langgenius/dify-agentbox
+    tag: latest
+    pullPolicy: IfNotPresent
+    ## Optionally specify an array of imagePullSecrets.
+    ## Secrets must be manually created in the namespace.
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+    ##
+    # pullSecrets:
+    #   - myRegistryKeySecretName
+
 ## @section -- Dify micro-service parameters
 ## Parameters for dify components including api(worker), web, sandbox, etc.
 
@@ -121,6 +132,10 @@ api:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param api.shareProcessNamespace Share a single process namespace between all of the containers in Dify API pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -322,6 +337,10 @@ worker:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param worker.shareProcessNamespace Share a single process namespace between all of the containers in Dify worker pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -404,6 +423,10 @@ beat:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param beat.shareProcessNamespace Share a single process namespace between all of the containers in Dify Celery Beat pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
   ## Configure extra options for celery beat containers' liveness, readiness, and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param beat.customLivenessProbe Custom livenessProbe that overrides the default one (None)
@@ -473,6 +496,10 @@ proxy:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param proxy.shareProcessNamespace Share a single process namespace between all of the containers in Dify nginx proxy pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
   ## Configure extra options for proxy containers' liveness, readiness, and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param proxy.customLivenessProbe Custom livenessProbe that overrides the default one
@@ -566,6 +593,10 @@ web:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param web.shareProcessNamespace Share a single process namespace between all of the containers in Dify web pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -656,6 +687,10 @@ sandbox:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param sandbox.shareProcessNamespace Share a single process namespace between all of the containers in Dify sandbox pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -745,6 +780,42 @@ sandbox:
     ##
     annotations: {}
 
+agentbox:
+  enabled: false
+  resources: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  priorityClassName: ""
+  ## @param agentbox.shareProcessNamespace Share a single process namespace between all of the containers in Dify agentbox pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
+  podSecurityContext: {}
+  # agentbox entrypoint needs root (mkdir /run/sshd, ssh-keygen, chpasswd, sshd). Override if your cluster restricts root.
+  containerSecurityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  service:
+    port: 22
+    annotations: {}
+    labels: {}
+    clusterIP: ""
+  serviceAccount:
+    create: false
+    name: ""
+    automountServiceAccountToken: false
+    annotations: {}
+  updateStrategy: {}
+  hostAliases: []
+  ## Agentbox SSH credentials (under consideration).
+  auth:
+    username: "agentbox"
+    password: "agentbox"
+
 ssrfProxy:
   enabled: false
   replicas: 1
@@ -753,6 +824,10 @@ ssrfProxy:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param ssrfProxy.shareProcessNamespace Share a single process namespace between all of the containers in Dify SSRF proxy pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
   ## Configure extra options for ssrf proxy containers' liveness, readiness, and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param ssrfProxy.customLivenessProbe Custom livenessProbe that overrides the default one
@@ -834,6 +909,11 @@ pluginDaemon:
   affinity: {}
   tolerations: []
   priorityClassName: ""
+  ## @param pluginDaemon.shareProcessNamespace Share a single process namespace between all of the containers in Dify plugin daemon pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ## Set to true to work around the issue described in https://github.com/BorisPolonsky/dify-helm/pull/402
+  ##
+  shareProcessNamespace: false
   ## Configure extra options for plugin daemon containers' liveness, readiness, and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param pluginDaemon.customLivenessProbe Custom livenessProbe that overrides the default one
