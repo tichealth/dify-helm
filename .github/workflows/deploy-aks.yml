@@ -111,6 +111,13 @@ jobs:
           # OpenTelemetry export endpoint (Arize Phoenix). Optional per-Environment
           # variable. Unset => deploy.sh leaves api.otel.enabled=false.
           echo "PHOENIX_OTLP_ENDPOINT=${{ vars.PHOENIX_OTLP_ENDPOINT }}" >> $GITHUB_ENV
+          # Explicit ingress host override (project_name may not include env suffix).
+          case "${{ inputs.environment }}" in
+            lite-prod|prod-full) echo "DIFY_INGRESS_HOST=dify-prod.tichealth.com.au" >> $GITHUB_ENV ;;
+            dev)                 echo "DIFY_INGRESS_HOST=dify-dev.tichealth.com.au" >> $GITHUB_ENV ;;
+            test)                echo "DIFY_INGRESS_HOST=dify-test.tichealth.com.au" >> $GITHUB_ENV ;;
+            *)                   echo "DIFY_INGRESS_HOST=dify-${{ inputs.environment }}.tichealth.com.au" >> $GITHUB_ENV ;;
+          esac
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3

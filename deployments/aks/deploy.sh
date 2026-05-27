@@ -445,16 +445,22 @@ EOF
         echo "Secrets from TF_VAR_* or terraform.tfvars"
     fi
 
-    # Ingress host: prod (lite or full) always uses dify-prod; dev/test use dify-dev / dify-test
-    PROJECT_NAME=$(grep -E '^project_name\s*=' "$TF_DIR/terraform.tfvars" 2>/dev/null | sed -n 's/.*=\s*"\([^"]*\)".*/\1/p' || true)
-    if [[ "$PROJECT_NAME" == *"prod"* ]]; then
-        INGRESS_HOST="dify-prod.tichealth.com.au"
-    elif [[ "$PROJECT_NAME" == *"dev"* ]]; then
-        INGRESS_HOST="dify-dev.tichealth.com.au"
-    elif [[ "$PROJECT_NAME" == *"test"* ]]; then
-        INGRESS_HOST="dify-test.tichealth.com.au"
+    # Ingress host:
+    # - Prefer explicit override (CI sets this from workflow inputs).
+    # - Fallback to inferring from terraform.tfvars `project_name`.
+    if [[ -n "${DIFY_INGRESS_HOST:-}" ]]; then
+        INGRESS_HOST="$DIFY_INGRESS_HOST"
     else
-        INGRESS_HOST="${PROJECT_NAME}.tichealth.com.au"
+        PROJECT_NAME=$(grep -E '^project_name\\s*=' "$TF_DIR/terraform.tfvars" 2>/dev/null | sed -n 's/.*=\\s*\"\\([^\"]*\\)\".*/\\1/p' || true)
+        if [[ "$PROJECT_NAME" == *"prod"* ]]; then
+            INGRESS_HOST="dify-prod.tichealth.com.au"
+        elif [[ "$PROJECT_NAME" == *"dev"* ]]; then
+            INGRESS_HOST="dify-dev.tichealth.com.au"
+        elif [[ "$PROJECT_NAME" == *"test"* ]]; then
+            INGRESS_HOST="dify-test.tichealth.com.au"
+        else
+            INGRESS_HOST="${PROJECT_NAME}.tichealth.com.au"
+        fi
     fi
     BASE_URL="https://$INGRESS_HOST"
     SET_INGRESS="--set ingress.hosts[0].host=$INGRESS_HOST --set ingress.tls[0].hosts[0]=$INGRESS_HOST"
