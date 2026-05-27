@@ -16,6 +16,14 @@ on:
           - deploy
           - teardown
         default: 'deploy'
+      mode:
+        description: 'plan = dry-run (terraform plan, no apply, no Helm). apply = full deploy. Defaults to plan to prevent accidents.'
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+        default: 'plan'
       deploy_mode:
         description: 'Deploy scope (when action=deploy)'
         required: true
@@ -147,18 +155,26 @@ jobs:
         timeout-minutes: 60
         run: |
           chmod +x deploy.sh
-          ./deploy.sh --all --auto-approve
+          if [ "${{ inputs.mode }}" = "plan" ]; then
+            ./deploy.sh --all --plan-only
+          else
+            ./deploy.sh --all --auto-approve
+          fi
 
       - name: Deploy (app only)
         if: inputs.action == 'deploy' && inputs.deploy_mode == 'app'
         timeout-minutes: 60
         run: |
           chmod +x deploy.sh
-          ./deploy.sh --app --auto-approve
+          if [ "${{ inputs.mode }}" = "plan" ]; then
+            ./deploy.sh --app --plan-only
+          else
+            ./deploy.sh --app --auto-approve
+          fi
 
       - name: Output DNS configuration (IP for first-time setup)
         id: dns
-        if: inputs.action == 'deploy' && (inputs.deploy_mode == 'all' || inputs.deploy_mode == 'app')
+        if: inputs.action == 'deploy' && inputs.mode == 'apply' && (inputs.deploy_mode == 'all' || inputs.deploy_mode == 'app')
         run: |
           CLUSTER=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
           RG=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
@@ -195,22 +211,32 @@ jobs:
         timeout-minutes: 60
         run: |
           chmod +x deploy.sh
-          ./deploy.sh --db --auto-approve
+          if [ "${{ inputs.mode }}" = "plan" ]; then
+            ./deploy.sh --db --plan-only
+          else
+            ./deploy.sh --db --auto-approve
+          fi
+
+      - name: Teardown plan (terraform plan -destroy)
+        if: inputs.action == 'teardown' && inputs.mode == 'plan'
+        run: |
+          echo "PLAN ONLY: running 'terraform plan -destroy'; no resources will be removed."
+          terraform plan -destroy
 
       - name: Get AKS credentials (for teardown)
-        if: inputs.action == 'teardown'
+        if: inputs.action == 'teardown' && inputs.mode == 'apply'
         run: |
           CLUSTER=$(terraform output -raw aks_cluster_name)
           RG=$(terraform output -raw resource_group_name)
           az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
 
       - name: Uninstall Helm releases (teardown)
-        if: inputs.action == 'teardown'
+        if: inputs.action == 'teardown' && inputs.mode == 'apply'
         run: |
           helm uninstall dify -n dify 2>/dev/null || true
           helm uninstall ingress-nginx -n ingress-nginx 2>/dev/null || true
           helm uninstall cert-manager -n cert-manager 2>/dev/null || true
 
       - name: Terraform Destroy (teardown)
-        if: inputs.action == 'teardown'
+        if: inputs.action == 'teardown' && inputs.mode == 'apply'
         run: terraform destroy -auto-approve

@@ -26,11 +26,16 @@ RELEASE_NAME="dify"
 AUTO_APPROVE=false
 VALUES_FILE="$SCRIPT_DIR/values.yaml"
 DEPLOY_MODE="all"  # Default: deploy everything
+PLAN_ONLY=false    # When true: terraform plan + exit, no apply, no helm
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --auto-approve)
             AUTO_APPROVE=true
+            shift
+            ;;
+        --plan-only)
+            PLAN_ONLY=true
             shift
             ;;
         --db)
@@ -131,6 +136,14 @@ else
 fi
 echo -e "${GREEN}✓ Terraform initialized${NC}\n"
 
+# Plan-only in --app mode: no infra changes to plan, and Helm dry-run is not
+# wired up here. Exit early so users get a clear signal instead of helm running.
+if [ "$PLAN_ONLY" == "true" ] && [ "$DEPLOY_MODE" == "app" ]; then
+    echo -e "${YELLOW}PLAN ONLY + --app: no Terraform changes planned; Helm dry-run not implemented here.${NC}"
+    echo "Re-run without --plan-only to apply Helm changes."
+    exit 0
+fi
+
 # Step 2: Create/Update Infrastructure
 if [ "$DEPLOY_MODE" != "app" ]; then
     if [ "$DEPLOY_MODE" == "db" ]; then
@@ -151,33 +164,44 @@ if [ "$DEPLOY_MODE" != "app" ]; then
         fi
     fi
 
+    DB_TARGETS=(
+        -target=azurerm_virtual_network.postgres
+        -target=azurerm_subnet.postgres
+        -target=azurerm_subnet.management
+        -target=azurerm_private_dns_zone.postgres
+        -target=azurerm_private_dns_zone_virtual_network_link.postgres
+        -target=azurerm_private_dns_zone_virtual_network_link.aks
+        -target=azurerm_network_security_group.management
+        -target=azurerm_network_security_rule.management_ssh
+        -target=azurerm_network_security_rule.management_rdp
+        -target=azurerm_network_security_rule.management_to_postgres
+        -target=azurerm_subnet_network_security_group_association.management
+        -target=azurerm_postgresql_flexible_server.pg
+        -target=azurerm_postgresql_flexible_server_database.db
+        -target=azurerm_postgresql_flexible_server_database.plugin_db
+        -target=azurerm_postgresql_flexible_server_configuration.require_secure_transport
+        -target=azurerm_postgresql_flexible_server_configuration.azure_extensions
+        -target=null_resource.create_extensions_dify
+        -target=null_resource.create_extensions_plugin
+        -target=azurerm_virtual_network_peering.postgres_to_aks
+        -target=azurerm_virtual_network_peering.aks_to_postgres
+    )
+
+    if [ "$PLAN_ONLY" == "true" ]; then
+        echo -e "${YELLOW}PLAN ONLY: running terraform plan; no apply, no Helm.${NC}"
+        if [ "$DEPLOY_MODE" == "db" ]; then
+            terraform plan "${DB_TARGETS[@]}" 2>&1 | tee terraform-plan.log
+        else
+            terraform plan 2>&1 | tee terraform-plan.log
+        fi
+        echo -e "${GREEN}✓ Plan complete (no changes applied).${NC}"
+        exit 0
+    fi
+
     if [ "$DEPLOY_MODE" == "db" ]; then
-        # Deploy only database-related resources
         echo "Applying Terraform for database resources only..."
-        terraform apply -auto-approve \
-            -target=azurerm_virtual_network.postgres \
-            -target=azurerm_subnet.postgres \
-            -target=azurerm_subnet.management \
-            -target=azurerm_private_dns_zone.postgres \
-            -target=azurerm_private_dns_zone_virtual_network_link.postgres \
-            -target=azurerm_private_dns_zone_virtual_network_link.aks \
-            -target=azurerm_network_security_group.management \
-            -target=azurerm_network_security_rule.management_ssh \
-            -target=azurerm_network_security_rule.management_rdp \
-            -target=azurerm_network_security_rule.management_to_postgres \
-            -target=azurerm_subnet_network_security_group_association.management \
-            -target=azurerm_postgresql_flexible_server.pg \
-            -target=azurerm_postgresql_flexible_server_database.db \
-            -target=azurerm_postgresql_flexible_server_database.plugin_db \
-            -target=azurerm_postgresql_flexible_server_configuration.require_secure_transport \
-            -target=azurerm_postgresql_flexible_server_configuration.azure_extensions \
-            -target=null_resource.create_extensions_dify \
-            -target=null_resource.create_extensions_plugin \
-            -target=azurerm_virtual_network_peering.postgres_to_aks \
-            -target=azurerm_virtual_network_peering.aks_to_postgres \
-            2>&1 | tee terraform-apply.log
+        terraform apply -auto-approve "${DB_TARGETS[@]}" 2>&1 | tee terraform-apply.log
     else
-        # Deploy all infrastructure
         terraform apply -auto-approve 2>&1 | tee terraform-apply.log
     fi
 

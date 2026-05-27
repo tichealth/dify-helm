@@ -2,10 +2,15 @@
 # Secrets via TF_VAR_* (GitHub Secrets in CI, or local terraform.tfvars / env).
 # See OPERATIONS.md and PROD_DEPLOY.md.
 
-project_name = "dify-dev"
+# Aligned with the manually-deployed dev cluster managed in remote state:
+# - project_name "dify" matches existing resource names (dify-aks-9764, dify-pg-9764, ...)
+# - resource_group_name "" tells terraform to keep managing the RG it already
+#   created (dify-rg-9764). Changing either of these causes terraform to plan
+#   destructive renames on the live cluster.
+project_name = "dify"
 location     = "australiaeast"
 
-resource_group_name = "rg-cme-dev"
+resource_group_name = ""
 
 # AKS - single node
 node_count            = 1
