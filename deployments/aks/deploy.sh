@@ -155,7 +155,8 @@ if [ "$DEPLOY_MODE" != "app" ]; then
         echo "This will create/update the AKS cluster, PostgreSQL, and related resources."
     fi
     
-    if [ "$AUTO_APPROVE" != "true" ]; then
+    # Plan-only is non-destructive; skip the interactive prompt entirely.
+    if [ "$AUTO_APPROVE" != "true" ] && [ "$PLAN_ONLY" != "true" ]; then
         read -p "Continue? (y/n) " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
