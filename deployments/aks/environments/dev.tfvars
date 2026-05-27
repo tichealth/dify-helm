@@ -1,39 +1,40 @@
-# Development - minimal cost, single node
-# Secrets via TF_VAR_* (GitHub Secrets in CI, or local terraform.tfvars / env).
-# See OPERATIONS.md and PROD_DEPLOY.md.
+# Development - aligned with live remote state (dify-rg-9764, private Postgres).
+# Secrets via TF_VAR_* in CI (GitHub Environment secrets), not in this file.
+# See deployments/aks/terraform.tfvars.dev and GITHUB_ACTIONS_SECRETS.md.
 
-# Aligned with the manually-deployed dev cluster managed in remote state:
-# - project_name "dify" matches existing resource names (dify-aks-9764, dify-pg-9764, ...)
-# - resource_group_name "" tells terraform to keep managing the RG it already
-#   created (dify-rg-9764). Changing either of these causes terraform to plan
-#   destructive renames on the live cluster.
-project_name = "dify"
-location     = "australiaeast"
+project_name        = "dify"
+location            = "australiaeast"
+resource_group_name = "" # terraform-managed RG: dify-rg-9764
 
-resource_group_name = ""
-
-# AKS - single node
+# AKS - vm_size must match the live node pool (avoid replace-on-apply)
 node_count            = 1
 vm_size               = "Standard_D2s_v5"
 enable_spot_node_pool = false
 
-# Azure Blob Storage (secrets via TF_VAR_* in CI)
+# Dify blob container name (account/key from TF_VAR_* in CI)
 azure_blob_container_name = "difydata"
 
 dify_init_password = ""
 
-# PostgreSQL - small SKU for dev
-use_azure_postgres = true
+# PostgreSQL - private VNet (same as terraform.tfvars.dev)
+use_azure_postgres  = true
 postgresql_username = "difyadmin"
 postgresql_database = "dify"
-postgres_version   = "16"
-postgres_sku_name  = "B_Standard_B1ms"
+postgres_version    = "16"
+postgres_sku_name   = "B_Standard_B1ms"
 postgres_storage_mb = 32768
-postgres_public_access = true
-postgres_open_firewall_all = true
-postgres_require_secure_transport = true
+postgres_storage_tier = "P4"
 
-redis_chart_version = "19.6.2"
+create_vnet_for_postgres           = true
+vnet_address_space                 = ["10.1.0.0/16"]
+postgres_subnet_address_prefixes     = ["10.1.1.0/24"]
+management_subnet_address_prefixes = ["10.1.2.0/24"]
+
+# When VNet is enabled, postgres_public_access is ignored (server stays private)
+postgres_open_firewall_all        = false
+postgres_require_secure_transport = false
+
+redis_chart_version  = "19.6.2"
 qdrant_chart_version = "1.16.3"
 
 tags = {
