@@ -316,9 +316,15 @@ if [ "$DEPLOY_MODE" != "db" ]; then
     helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
       --namespace ingress-nginx \
       --create-namespace \
+      --set controller.replicaCount=1 \
+      --set controller.autoscaling.enabled=false \
+      --set controller.updateStrategy.rollingUpdate.maxSurge=0 \
+      --set controller.updateStrategy.rollingUpdate.maxUnavailable=1 \
+      --set controller.resources.requests.cpu=25m \
+      --set controller.resources.requests.memory=90Mi \
       --set controller.service.type=LoadBalancer \
       --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
-      --wait --timeout 5m
+      --wait --timeout 15m
     echo -e "${GREEN}✓ nginx-ingress installed${NC}\n"
 
     # Step 8: Install cert-manager
