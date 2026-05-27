@@ -100,6 +100,9 @@ jobs:
           echo "TF_VAR_postgresql_password=${{ secrets.POSTGRESQL_PASSWORD }}" >> $GITHUB_ENV
           echo "TF_VAR_redis_password=${{ secrets.REDIS_PASSWORD }}" >> $GITHUB_ENV
           echo "TF_VAR_qdrant_api_key=${{ secrets.QDRANT_API_KEY }}" >> $GITHUB_ENV
+          # OpenTelemetry export endpoint (Arize Phoenix). Optional per-Environment
+          # variable. Unset => deploy.sh leaves api.otel.enabled=false.
+          echo "PHOENIX_OTLP_ENDPOINT=${{ vars.PHOENIX_OTLP_ENDPOINT }}" >> $GITHUB_ENV
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3

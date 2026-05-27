@@ -430,13 +430,24 @@ EOF
     # Force Dify frontend/API to use HTTPS URLs (avoids "not secure" / mixed content)
     SET_DOMAINS="--set global.consoleWebDomain=$BASE_URL --set global.consoleApiDomain=$BASE_URL --set global.serviceApiDomain=$BASE_URL --set global.appApiDomain=$BASE_URL --set global.appWebDomain=$BASE_URL --set global.filesDomain=$BASE_URL --set global.triggerDomain=$BASE_URL"
 
+    # OpenTelemetry -> Arize Phoenix. Per-env endpoint comes from
+    # PHOENIX_OTLP_ENDPOINT (e.g. set by the GitHub Actions workflow from a
+    # per-Environment variable). Leave the env var unset to disable.
+    SET_OTEL=""
+    if [[ -n "${PHOENIX_OTLP_ENDPOINT:-}" ]]; then
+        SET_OTEL="--set api.otel.enabled=true --set api.otel.baseEndpoint=${PHOENIX_OTLP_ENDPOINT}"
+        echo "OTEL: enabled, exporting to ${PHOENIX_OTLP_ENDPOINT}"
+    else
+        echo "OTEL: disabled (PHOENIX_OTLP_ENDPOINT not set)"
+    fi
+
     helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
         --namespace "$NAMESPACE" \
         --create-namespace \
         --timeout 45m \
         --atomic \
         --wait \
-        $VALUES_ARG $SET_POSTGRES $SET_POSTGRES_PASSWORD $SET_DIFY_SECRET $SET_REDIS_PASSWORD $SET_QDRANT_KEY $SET_INGRESS $SET_DOMAINS
+        $VALUES_ARG $SET_POSTGRES $SET_POSTGRES_PASSWORD $SET_DIFY_SECRET $SET_REDIS_PASSWORD $SET_QDRANT_KEY $SET_INGRESS $SET_DOMAINS $SET_OTEL
 
     echo -e "${GREEN}✓ Dify deployed${NC}\n"
 

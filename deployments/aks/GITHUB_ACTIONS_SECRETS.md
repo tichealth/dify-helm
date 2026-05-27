@@ -63,6 +63,26 @@ The workflow sets these as Terraform environment variables from the **active Git
 
 **values.yaml** contains only placeholders; real values come from GitHub Secrets (CI) or terraform.tfvars / TF_VAR_* (local). See [Secrets for local runs](#secrets-for-local-runs).
 
+## Observability (optional)
+
+OpenTelemetry export to a self-hosted Arize Phoenix is per-environment and **off by default**. Set the variable below in any environment that should ship traces; leave it absent (or empty) to keep OTEL disabled there.
+
+| Name | Purpose | Store as |
+|------|---------|----------|
+| `PHOENIX_OTLP_ENDPOINT` | Phoenix OTLP HTTP base URL (e.g. `https://phoenix-dev.tichealth.com.au`). When set, the workflow exports it; `deploy.sh` then passes `--set api.otel.enabled=true --set api.otel.baseEndpoint=$PHOENIX_OTLP_ENDPOINT` to Helm. When unset, `api.otel.enabled` stays `false`. | **Variable** |
+
+Suggested values:
+
+| Environment | Value |
+|---|---|
+| `dev` | `https://phoenix-dev.tichealth.com.au` |
+| `test` | (same as dev if you want test traces in dev Phoenix, else leave blank) |
+| `prod` | leave blank until a prod Phoenix exists, then set its public URL |
+
+Notes:
+- This produces generic OTEL spans (HTTP/DB/Celery) from `dify-api` and `dify-worker`. It is **independent** of the per-app Phoenix/Arize integration configured in the Dify UI, which is what produces LLM/chain/retriever spans with input/output.
+- Local runs: `export PHOENIX_OTLP_ENDPOINT=...` before `./deploy.sh` to mirror CI behaviour; `unset PHOENIX_OTLP_ENDPOINT` disables it again.
+
 ### PostgreSQL firewall
 
 Use **`postgres_open_firewall_all = true`** in the environment tfvars used by CI (e.g. lite-prod) so AKS pods and the runner can reach Postgres. Otherwise Helm can time out. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#0-azure-postgresql-firewall-helm-times-out--pods-never-ready).

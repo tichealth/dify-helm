@@ -57,6 +57,27 @@ api:
       accessModes: ReadWriteMany
       size: 5Gi
 
+  # OpenTelemetry export to self-hosted Arize Phoenix.
+  # Defaults off; enabled and pointed at the right Phoenix per environment by
+  # deploy.sh when PHOENIX_OTLP_ENDPOINT is set (sourced from a GitHub
+  # Environment variable in CI, or your local shell).
+  #
+  # These spans are generic OTEL (HTTP/DB/Celery) -- they do NOT replace the
+  # per-app Dify -> Arize/OpenInference integration configured in the Dify UI,
+  # which is what produces LLM/chain/retriever spans with input/output.
+  otel:
+    enabled: false
+    baseEndpoint: ""
+    exporterProtocol: "http/protobuf"
+    exporterType: "otlp"
+    samplingRate: 1.0
+    batchExportScheduleDelay: 5000
+    maxQueueSize: 2048
+    maxExportBatchSize: 512
+    metricExportInterval: 60000
+    batchExportTimeout: 10000
+    metricExportTimeout: 30000
+
 # Worker Configuration
 # CPU share: requests only. 100m request for scheduling.
 worker:
