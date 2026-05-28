@@ -23,7 +23,7 @@ resource "azurerm_subnet" "postgres" {
   delegation {
     name = "postgres-delegation"
     service_delegation {
-      name = "Microsoft.DBforPostgreSQL/flexibleServers"
+      name    = "Microsoft.DBforPostgreSQL/flexibleServers"
       actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
     }
   }
@@ -53,10 +53,10 @@ resource "azurerm_network_security_rule" "management_ssh" {
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range           = "*"
-  destination_port_range     = "22"
-  source_address_prefix      = "Internet"
-  destination_address_prefix = "*"
-  resource_group_name        = var.resource_group_name
+  destination_port_range      = "22"
+  source_address_prefix       = "Internet"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.management[0].name
 }
 
@@ -68,10 +68,10 @@ resource "azurerm_network_security_rule" "management_rdp" {
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range           = "*"
-  destination_port_range     = "3389"
-  source_address_prefix      = "Internet"
-  destination_address_prefix = "*"
-  resource_group_name        = var.resource_group_name
+  destination_port_range      = "3389"
+  source_address_prefix       = "Internet"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.management[0].name
 }
 
@@ -83,10 +83,10 @@ resource "azurerm_network_security_rule" "management_to_postgres" {
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range           = "*"
-  destination_port_range     = "5432"
-  source_address_prefix      = length(var.management_subnet_address_prefixes) > 0 ? var.management_subnet_address_prefixes[0] : "*"
-  destination_address_prefix = length(var.postgres_subnet_address_prefixes) > 0 ? var.postgres_subnet_address_prefixes[0] : "*"
-  resource_group_name        = var.resource_group_name
+  destination_port_range      = "5432"
+  source_address_prefix       = length(var.management_subnet_address_prefixes) > 0 ? var.management_subnet_address_prefixes[0] : "*"
+  destination_address_prefix  = length(var.postgres_subnet_address_prefixes) > 0 ? var.postgres_subnet_address_prefixes[0] : "*"
+  resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.management[0].name
 }
 
@@ -147,9 +147,9 @@ resource "azurerm_virtual_network_peering" "postgres_to_aks" {
   resource_group_name       = var.resource_group_name
   virtual_network_name      = azurerm_virtual_network.postgres[0].name
   remote_virtual_network_id = local.aks_vnet_id
-  allow_forwarded_traffic  = true
-  allow_gateway_transit    = false
-  use_remote_gateways      = false
+  allow_forwarded_traffic   = true
+  allow_gateway_transit     = false
+  use_remote_gateways       = false
 
   depends_on = [data.azurerm_resources.aks_vnets]
 }
@@ -160,9 +160,9 @@ resource "azurerm_virtual_network_peering" "aks_to_postgres" {
   resource_group_name       = data.azurerm_resource_group.aks_node[0].name
   virtual_network_name      = local.aks_vnet_name
   remote_virtual_network_id = azurerm_virtual_network.postgres[0].id
-  allow_forwarded_traffic  = true
-  allow_gateway_transit    = false
-  use_remote_gateways      = false
+  allow_forwarded_traffic   = true
+  allow_gateway_transit     = false
+  use_remote_gateways       = false
 
   depends_on = [data.azurerm_resources.aks_vnets]
 }
@@ -217,7 +217,7 @@ resource "null_resource" "create_pg_app_dns_record" {
   ]
 
   provisioner "local-exec" {
-    command = <<-EOT
+    command     = <<-EOT
       set -e
       RG='${replace(var.resource_group_name, "'", "'\"'\"'")}'
       ZONE='${replace(azurerm_private_dns_zone.postgres[0].name, "'", "'\"'\"'")}'
@@ -287,6 +287,13 @@ resource "azurerm_postgresql_flexible_server_configuration" "azure_extensions" {
   name      = "azure.extensions"
   server_id = azurerm_postgresql_flexible_server.pg[0].id
   value     = "vector,uuid-ossp"
+}
+
+resource "azurerm_postgresql_flexible_server_configuration" "max_connections" {
+  count     = var.use_azure_postgres && var.postgres_max_connections != null ? 1 : 0
+  name      = "max_connections"
+  server_id = azurerm_postgresql_flexible_server.pg[0].id
+  value     = tostring(var.postgres_max_connections)
 }
 
 resource "null_resource" "create_extensions_dify" {

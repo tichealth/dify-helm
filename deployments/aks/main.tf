@@ -34,18 +34,18 @@ locals {
 module "aks" {
   source = "./modules/aks"
 
-  name_prefix          = local.name_prefix
-  suffix_hex           = random_id.suffix.hex
-  resource_group_name  = local.rg_name
-  location             = local.rg_location
-  node_count           = var.node_count
-  vm_size              = var.vm_size
+  name_prefix           = local.name_prefix
+  suffix_hex            = random_id.suffix.hex
+  resource_group_name   = local.rg_name
+  location              = local.rg_location
+  node_count            = var.node_count
+  vm_size               = var.vm_size
   enable_spot_node_pool = var.enable_spot_node_pool
-  spot_node_pool_name  = var.spot_node_pool_name
-  spot_vm_size         = var.spot_vm_size
-  spot_node_count      = var.spot_node_count
-  spot_max_price       = var.spot_max_price
-  tags                 = var.tags
+  spot_node_pool_name   = var.spot_node_pool_name
+  spot_vm_size          = var.spot_vm_size
+  spot_node_count       = var.spot_node_count
+  spot_max_price        = var.spot_max_price
+  tags                  = var.tags
 }
 
 # -----------------------------------------------------------------------------
@@ -54,32 +54,33 @@ module "aks" {
 module "postgres" {
   source = "./modules/postgres"
 
-  name_prefix   = local.name_prefix
-  suffix_hex    = random_id.suffix.hex
+  name_prefix         = local.name_prefix
+  suffix_hex          = random_id.suffix.hex
   resource_group_name = local.rg_name
-  location      = local.rg_location
-  tags          = var.tags
+  location            = local.rg_location
+  tags                = var.tags
 
-  use_azure_postgres    = var.use_azure_postgres
+  use_azure_postgres       = var.use_azure_postgres
   create_vnet_for_postgres = var.create_vnet_for_postgres
-  aks_node_resource_group = (var.use_azure_postgres && var.create_vnet_for_postgres) ? module.aks.node_resource_group : null
+  aks_node_resource_group  = (var.use_azure_postgres && var.create_vnet_for_postgres) ? module.aks.node_resource_group : null
 
-  vnet_address_space               = var.vnet_address_space
-  postgres_subnet_address_prefixes  = var.postgres_subnet_address_prefixes
+  vnet_address_space                 = var.vnet_address_space
+  postgres_subnet_address_prefixes   = var.postgres_subnet_address_prefixes
   management_subnet_address_prefixes = var.management_subnet_address_prefixes
 
-  postgresql_server_name = var.postgresql_server_name
-  postgres_version       = var.postgres_version
-  postgresql_username    = var.postgresql_username
-  postgresql_password    = var.postgresql_password
-  postgresql_database    = var.postgresql_database
-  plugin_database_name   = var.plugin_database_name
-  postgres_sku_name      = var.postgres_sku_name
-  postgres_storage_mb     = var.postgres_storage_mb
-  postgres_storage_tier   = var.postgres_storage_tier
-  postgres_public_access  = var.postgres_public_access
+  postgresql_server_name            = var.postgresql_server_name
+  postgres_version                  = var.postgres_version
+  postgresql_username               = var.postgresql_username
+  postgresql_password               = var.postgresql_password
+  postgresql_database               = var.postgresql_database
+  plugin_database_name              = var.plugin_database_name
+  postgres_sku_name                 = var.postgres_sku_name
+  postgres_storage_mb               = var.postgres_storage_mb
+  postgres_storage_tier             = var.postgres_storage_tier
+  postgres_public_access            = var.postgres_public_access
   postgres_require_secure_transport = var.postgres_require_secure_transport
-  postgres_open_firewall_all = var.postgres_open_firewall_all
+  postgres_open_firewall_all        = var.postgres_open_firewall_all
+  postgres_max_connections          = var.postgres_max_connections
 }
 
 # -----------------------------------------------------------------------------

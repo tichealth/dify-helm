@@ -17,22 +17,23 @@ azure_blob_container_name = "difydata"
 dify_init_password = ""
 
 # PostgreSQL - private VNet (same as terraform.tfvars.dev)
-use_azure_postgres  = true
-postgresql_username = "difyadmin"
-postgresql_database = "dify"
-postgres_version    = "16"
-postgres_sku_name   = "B_Standard_B1ms"
-postgres_storage_mb = 32768
+use_azure_postgres    = true
+postgresql_username   = "difyadmin"
+postgresql_database   = "dify"
+postgres_version      = "16"
+postgres_sku_name     = "B_Standard_B1ms"
+postgres_storage_mb   = 32768
 postgres_storage_tier = "P4"
 
 create_vnet_for_postgres           = true
 vnet_address_space                 = ["10.1.0.0/16"]
-postgres_subnet_address_prefixes     = ["10.1.1.0/24"]
+postgres_subnet_address_prefixes   = ["10.1.1.0/24"]
 management_subnet_address_prefixes = ["10.1.2.0/24"]
 
 # When VNet is enabled, postgres_public_access is ignored (server stays private)
 postgres_open_firewall_all        = false
 postgres_require_secure_transport = false
+postgres_max_connections          = 200
 
 redis_chart_version  = "19.6.2"
 qdrant_chart_version = "1.16.3"

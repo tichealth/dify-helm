@@ -22,17 +22,17 @@ azure_blob_container_name = "difydata"
 dify_init_password = ""
 
 # PostgreSQL
-use_azure_postgres = true
-postgresql_username = "difyadmin"
-postgresql_database = "dify"
-postgres_version   = "16"
-postgres_sku_name  = "B_Standard_B1ms"
-postgres_storage_mb = 32768
-postgres_public_access = true
-postgres_open_firewall_all = true
+use_azure_postgres                = true
+postgresql_username               = "difyadmin"
+postgresql_database               = "dify"
+postgres_version                  = "16"
+postgres_sku_name                 = "B_Standard_B1ms"
+postgres_storage_mb               = 32768
+postgres_public_access            = true
+postgres_open_firewall_all        = true
 postgres_require_secure_transport = true
 
-redis_chart_version = "19.6.2"
+redis_chart_version  = "19.6.2"
 qdrant_chart_version = "1.16.3"
 
 tags = {

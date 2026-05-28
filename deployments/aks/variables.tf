@@ -113,18 +113,18 @@ variable "plugin_database_name" {
 
 # Postgres config
 variable "postgresql_username" {
-  type        = string
-  default     = "postgres"
+  type    = string
+  default = "postgres"
 }
 
 variable "postgresql_password" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 variable "postgresql_database" {
-  type        = string
-  default     = "dify"
+  type    = string
+  default = "dify"
 }
 
 # Use Azure Database for PostgreSQL Flexible instead of in-cluster Postgres
@@ -182,6 +182,12 @@ variable "postgres_open_firewall_all" {
   default     = true
 }
 
+variable "postgres_max_connections" {
+  description = "Optional PostgreSQL max_connections. Null = leave Azure default."
+  type        = number
+  default     = null
+}
+
 # VNet configuration for PostgreSQL private access
 variable "create_vnet_for_postgres" {
   description = "Create VNet and delegated subnet for PostgreSQL private access. When true, postgres_public_access is automatically set to false."
@@ -215,8 +221,8 @@ variable "redis_chart_version" {
 }
 
 variable "redis_password" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 # Qdrant config
@@ -227,6 +233,6 @@ variable "qdrant_chart_version" {
 }
 
 variable "qdrant_api_key" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }

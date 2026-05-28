@@ -1,13 +1,13 @@
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = "${var.name_prefix}-aks-${var.suffix_hex}"
   location            = var.location
-  resource_group_name  = var.resource_group_name
+  resource_group_name = var.resource_group_name
   dns_prefix          = "${var.name_prefix}-${var.suffix_hex}"
 
   default_node_pool {
-    name       = "system"
-    node_count = var.node_count
-    vm_size    = var.vm_size
+    name                        = "system"
+    node_count                  = var.node_count
+    vm_size                     = var.vm_size
     temporary_name_for_rotation = "systemtemp"
   }
 
@@ -29,8 +29,8 @@ resource "azurerm_kubernetes_cluster_node_pool" "spot" {
   eviction_policy = "Delete"
   spot_max_price  = var.spot_max_price
 
-  orchestrator_version          = null
-  temporary_name_for_rotation   = "spottemp"
+  orchestrator_version        = null
+  temporary_name_for_rotation = "spottemp"
 
   node_taints = [
     "kubernetes.azure.com/scalesetpriority=spot:NoSchedule"
