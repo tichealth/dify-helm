@@ -207,9 +207,20 @@ Copy `environments/<env>.tfvars` to `terraform.tfvars`, then add the secret vari
 
 For **local** runs (e.g. `./deploy.sh`), Terraform uses the same **azurerm** backend. Create `deployments/aks/backend.azurerm.tfvars` from `backend.azurerm.tfvars.example`, set `resource_group_name`, `storage_account_name`, `container_name` = `tfstate`, `key` (e.g. `dev.terraform.tfstate` for dev, **`prod.terraform.tfstate`** for lite-prod or prod-full), and `access_key`. Do not commit `backend.azurerm.tfvars`. Then `deploy.sh` will run `terraform init -reconfigure -backend-config=backend.azurerm.tfvars` automatically.
 
-## Optional
+## Approvals (Recommended)
 
-- **Environments:** In the workflow you can add `environment: aks-deploy` (and create that environment in Settings → Environments) to require approvals before deploy/teardown.
+This workflow is designed for a **single run** that does:
+
+- **Plan job** (Terraform plan saved to `tfplan` + Helm diffs)
+- **Apply job** (requires approval via GitHub Environment protection, then runs `terraform apply tfplan` + Helm upgrades)
+
+To enable approvals:
+
+1. Repo → **Settings** → **Environments**
+2. Select `dev`, `test`, and `prod`
+3. Under **Deployment protection rules**, enable **Required reviewers** and add your reviewers.
+
+Note: Because GitHub Environment secrets are only available to jobs that reference the environment, **both** the plan and apply jobs reference the environment. With required reviewers enabled, you will approve twice per workflow run (once before plan, once before apply). The apply approval is the meaningful one since the plan output is visible in the same run.
 
 ## Status badge, unpin, disable
 
@@ -228,7 +239,6 @@ When you click **Run workflow** you choose:
 - **action:** `deploy` or `teardown`
 - **deploy_mode:** `all`, `app`, or `db` (only when action = deploy)
 - **environment:** `dev`, `test`, `lite-prod`, or `prod-full` (picks the tfvars file **and** the GitHub Environment for secrets/variables)
-- **auto_approve:** skip confirmation prompts (default: false)
 
 **How environment is used:** The selected value chooses both (1) which tfvars file is copied (e.g. `dev.tfvars`, `lite-prod.tfvars`) and (2) which GitHub Environment’s Variables and Secrets are used. Mapping: **dev** → env `dev`, **test** → env `test`, **lite-prod** and **prod-full** → env `prod`. So create GitHub Environments named exactly `dev`, `test`, and `prod`, and add the Variables and Secrets to each.
 

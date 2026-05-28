@@ -27,6 +27,8 @@ AUTO_APPROVE=false
 VALUES_FILE="$SCRIPT_DIR/values.yaml"
 DEPLOY_MODE="all"  # Default: deploy everything
 PLAN_ONLY=false    # When true: terraform plan + exit, no apply, no helm
+PLAN_STAGE=false   # When true: terraform plan -out=tfplan + helm diff + exit
+APPLY_STAGE=false  # When true: terraform apply tfplan + helm upgrade
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -36,6 +38,16 @@ while [[ $# -gt 0 ]]; do
             ;;
         --plan-only)
             PLAN_ONLY=true
+            shift
+            ;;
+        --plan-stage)
+            PLAN_STAGE=true
+            PLAN_ONLY=true
+            shift
+            ;;
+        --apply-stage)
+            APPLY_STAGE=true
+            AUTO_APPROVE=true
             shift
             ;;
         --db)
@@ -138,7 +150,7 @@ echo -e "${GREEN}✓ Terraform initialized${NC}\n"
 
 # Plan-only in --app mode: no infra changes to plan, and Helm dry-run is not
 # wired up here. Exit early so users get a clear signal instead of helm running.
-if [ "$PLAN_ONLY" == "true" ] && [ "$DEPLOY_MODE" == "app" ]; then
+if [ "$PLAN_ONLY" == "true" ] && [ "$DEPLOY_MODE" == "app" ] && [ "$PLAN_STAGE" != "true" ]; then
     echo -e "${YELLOW}PLAN ONLY + --app: no Terraform changes planned; Helm dry-run not implemented here.${NC}"
     echo "Re-run without --plan-only to apply Helm changes."
     exit 0
@@ -189,28 +201,52 @@ if [ "$DEPLOY_MODE" != "app" ]; then
     )
 
     if [ "$PLAN_ONLY" == "true" ]; then
-        echo -e "${YELLOW}PLAN ONLY: running terraform plan; no apply, no Helm.${NC}"
-        if [ "$DEPLOY_MODE" == "db" ]; then
-            terraform plan "${DB_TARGETS[@]}" 2>&1 | tee terraform-plan.log
+        if [ "$PLAN_STAGE" == "true" ]; then
+            echo -e "${YELLOW}PLAN STAGE: running terraform plan -out=tfplan (no apply).${NC}"
+            if [ "$DEPLOY_MODE" == "db" ]; then
+                terraform plan -out=tfplan "${DB_TARGETS[@]}" 2>&1 | tee terraform-plan.log
+            else
+                terraform plan -out=tfplan 2>&1 | tee terraform-plan.log
+            fi
+            echo -e "${GREEN}✓ Terraform plan saved to tfplan.${NC}\n"
         else
-            terraform plan 2>&1 | tee terraform-plan.log
+            echo -e "${YELLOW}PLAN ONLY: running terraform plan; no apply, no Helm.${NC}"
+            if [ "$DEPLOY_MODE" == "db" ]; then
+                terraform plan "${DB_TARGETS[@]}" 2>&1 | tee terraform-plan.log
+            else
+                terraform plan 2>&1 | tee terraform-plan.log
+            fi
+            echo -e "${GREEN}✓ Plan complete (no changes applied).${NC}"
+            exit 0
         fi
-        echo -e "${GREEN}✓ Plan complete (no changes applied).${NC}"
-        exit 0
     fi
 
-    if [ "$DEPLOY_MODE" == "db" ]; then
-        echo "Applying Terraform for database resources only..."
-        terraform apply -auto-approve "${DB_TARGETS[@]}" 2>&1 | tee terraform-apply.log
-    else
-        terraform apply -auto-approve 2>&1 | tee terraform-apply.log
+    if [ "$PLAN_STAGE" != "true" ]; then
+        if [ "$APPLY_STAGE" == "true" ]; then
+            [ -f tfplan ] || { echo -e "${RED}Error: tfplan not found. Run --plan-stage first.${NC}"; exit 1; }
+            echo "Applying Terraform from saved plan (tfplan)..."
+            terraform apply -auto-approve tfplan 2>&1 | tee terraform-apply.log
+        else
+            if [ "$DEPLOY_MODE" == "db" ]; then
+                echo "Applying Terraform for database resources only..."
+                terraform apply -auto-approve "${DB_TARGETS[@]}" 2>&1 | tee terraform-apply.log
+            else
+                terraform apply -auto-approve 2>&1 | tee terraform-apply.log
+            fi
+        fi
     fi
 
-    echo -e "${GREEN}✓ Infrastructure created/updated${NC}\n"
+    if [ "$PLAN_STAGE" != "true" ]; then
+        echo -e "${GREEN}✓ Infrastructure created/updated${NC}\n"
+    fi
 else
-    echo -e "${YELLOW}Step 2: Skipping infrastructure deployment (--app mode)${NC}"
-    echo "Assuming AKS and PostgreSQL already exist."
-    echo ""
+    if [ "$PLAN_STAGE" == "true" ]; then
+        echo -e "${YELLOW}PLAN STAGE + --app: skipping Terraform.${NC}\n"
+    else
+        echo -e "${YELLOW}Step 2: Skipping infrastructure deployment (--app mode)${NC}"
+        echo "Assuming AKS and PostgreSQL already exist."
+        echo ""
+    fi
 fi
 
 # Step 3: Get AKS credentials (skip if --db only)
@@ -304,56 +340,88 @@ if [ "$DEPLOY_MODE" != "db" ]; then
 
     echo -e "${GREEN}✓ Helm repository ready${NC}\n"
 
-    # Step 6: Create namespace if it doesn't exist
-    echo -e "${YELLOW}Step 6: Ensuring namespace exists...${NC}"
-    kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-    echo -e "${GREEN}✓ Namespace ready${NC}\n"
+    if [ "$PLAN_STAGE" == "true" ]; then
+        echo -e "${YELLOW}PLAN STAGE: running Helm diffs (no resources will be created/changed).${NC}"
 
-    # Step 7: Install nginx-ingress controller
-    echo -e "${YELLOW}Step 7: Installing nginx-ingress...${NC}"
-    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
-    helm repo update >/dev/null 2>&1
-    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-      --namespace ingress-nginx \
-      --create-namespace \
-      --set controller.replicaCount=1 \
-      --set controller.autoscaling.enabled=false \
-      --set controller.updateStrategy.rollingUpdate.maxSurge=0 \
-      --set controller.updateStrategy.rollingUpdate.maxUnavailable=1 \
-      --set controller.resources.requests.cpu=25m \
-      --set controller.resources.requests.memory=90Mi \
-      --set controller.service.type=LoadBalancer \
-      --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
-      --wait --timeout 15m
-    echo -e "${GREEN}✓ nginx-ingress installed${NC}\n"
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
+        helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+        helm repo update >/dev/null 2>&1
 
-    # Step 8: Install cert-manager
-    echo -e "${YELLOW}Step 8: Installing cert-manager...${NC}"
-    helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
-    helm repo update >/dev/null 2>&1
-    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.crds.yaml
-    helm upgrade --install cert-manager jetstack/cert-manager \
-      --namespace cert-manager \
-      --create-namespace \
-      --version v1.13.3 \
-      --wait --timeout 5m
-    echo -e "${GREEN}✓ cert-manager installed${NC}\n"
+        # Ingress NGINX diff
+        helm diff upgrade ingress-nginx ingress-nginx/ingress-nginx \
+          --namespace ingress-nginx \
+          --create-namespace \
+          --set controller.replicaCount=1 \
+          --set controller.autoscaling.enabled=false \
+          --set controller.updateStrategy.rollingUpdate.maxSurge=0 \
+          --set controller.updateStrategy.rollingUpdate.maxUnavailable=1 \
+          --set controller.resources.requests.cpu=25m \
+          --set controller.resources.requests.memory=90Mi \
+          --set controller.service.type=LoadBalancer \
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+          --allow-unreleased \
+          > helm-diff-ingress-nginx.log || true
 
-    # Step 8b: CoreDNS patch so cert-manager can resolve public domains (e.g. dify-prod.tichealth.com.au)
-    echo -e "${YELLOW}Step 8b: Applying CoreDNS patch (public DNS for cert-manager)...${NC}"
-    if [ -f "$SCRIPT_DIR/coredns-patch.yaml" ]; then
-        kubectl apply -f "$SCRIPT_DIR/coredns-patch.yaml"
-        kubectl -n kube-system rollout restart deployment coredns
-        echo "Waiting for CoreDNS to be ready..."
-        kubectl -n kube-system rollout status deployment coredns --timeout=60s
-        echo -e "${GREEN}✓ CoreDNS patch applied${NC}\n"
+        # cert-manager diff (CRDs are handled separately; this is a chart-level diff only)
+        helm diff upgrade cert-manager jetstack/cert-manager \
+          --namespace cert-manager \
+          --create-namespace \
+          --version v1.13.3 \
+          --allow-unreleased \
+          > helm-diff-cert-manager.log || true
+
+        # Dify diff (below, after secrets / values are assembled)
     else
-        echo -e "${YELLOW}⚠ coredns-patch.yaml not found, skipping (cert-manager may fail to resolve your domain)${NC}\n"
-    fi
+        # Step 6: Create namespace if it doesn't exist
+        echo -e "${YELLOW}Step 6: Ensuring namespace exists...${NC}"
+        kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+        echo -e "${GREEN}✓ Namespace ready${NC}\n"
 
-    # Step 9: Create ClusterIssuer (Let's Encrypt)
-    echo -e "${YELLOW}Step 9: Creating ClusterIssuer...${NC}"
-    kubectl apply -f - <<EOF
+        # Step 7: Install nginx-ingress controller
+        echo -e "${YELLOW}Step 7: Installing nginx-ingress...${NC}"
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
+        helm repo update >/dev/null 2>&1
+        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+          --namespace ingress-nginx \
+          --create-namespace \
+          --set controller.replicaCount=1 \
+          --set controller.autoscaling.enabled=false \
+          --set controller.updateStrategy.rollingUpdate.maxSurge=0 \
+          --set controller.updateStrategy.rollingUpdate.maxUnavailable=1 \
+          --set controller.resources.requests.cpu=25m \
+          --set controller.resources.requests.memory=90Mi \
+          --set controller.service.type=LoadBalancer \
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+          --wait --timeout 15m
+        echo -e "${GREEN}✓ nginx-ingress installed${NC}\n"
+
+        # Step 8: Install cert-manager
+        echo -e "${YELLOW}Step 8: Installing cert-manager...${NC}"
+        helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+        helm repo update >/dev/null 2>&1
+        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.crds.yaml
+        helm upgrade --install cert-manager jetstack/cert-manager \
+          --namespace cert-manager \
+          --create-namespace \
+          --version v1.13.3 \
+          --wait --timeout 5m
+        echo -e "${GREEN}✓ cert-manager installed${NC}\n"
+
+        # Step 8b: CoreDNS patch so cert-manager can resolve public domains (e.g. dify-prod.tichealth.com.au)
+        echo -e "${YELLOW}Step 8b: Applying CoreDNS patch (public DNS for cert-manager)...${NC}"
+        if [ -f "$SCRIPT_DIR/coredns-patch.yaml" ]; then
+            kubectl apply -f "$SCRIPT_DIR/coredns-patch.yaml"
+            kubectl -n kube-system rollout restart deployment coredns
+            echo "Waiting for CoreDNS to be ready..."
+            kubectl -n kube-system rollout status deployment coredns --timeout=60s
+            echo -e "${GREEN}✓ CoreDNS patch applied${NC}\n"
+        else
+            echo -e "${YELLOW}⚠ coredns-patch.yaml not found, skipping (cert-manager may fail to resolve your domain)${NC}\n"
+        fi
+
+        # Step 9: Create ClusterIssuer (Let's Encrypt)
+        echo -e "${YELLOW}Step 9: Creating ClusterIssuer...${NC}"
+        kubectl apply -f - <<EOF
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -384,14 +452,19 @@ spec:
         ingress:
           class: nginx
 EOF
-    echo -e "${GREEN}✓ ClusterIssuer applied${NC}\n"
+        echo -e "${GREEN}✓ ClusterIssuer applied${NC}\n"
+    fi
 
     # Step 10: Deploy Dify with Helm
-    echo -e "${YELLOW}Step 10: Deploying Dify...${NC}"
-    if [ "$AUTO_APPROVE" != "true" ]; then
-        read -p "Continue? (y/n) " -n 1 -r
-        echo
-        [[ $REPLY =~ ^[Yy]$ ]] || { echo "Cancelled."; exit 1; }
+    if [ "$PLAN_STAGE" == "true" ]; then
+        echo -e "${YELLOW}PLAN STAGE: Dify Helm diff...${NC}"
+    else
+        echo -e "${YELLOW}Step 10: Deploying Dify...${NC}"
+        if [ "$AUTO_APPROVE" != "true" ]; then
+            read -p "Continue? (y/n) " -n 1 -r
+            echo
+            [[ $REPLY =~ ^[Yy]$ ]] || { echo "Cancelled."; exit 1; }
+        fi
     fi
 
     VALUES_ARG=""
@@ -478,15 +551,28 @@ EOF
         echo "OTEL: disabled (PHOENIX_OTLP_ENDPOINT not set)"
     fi
 
-    helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
-        --namespace "$NAMESPACE" \
-        --create-namespace \
-        --timeout 45m \
-        --atomic \
-        --wait \
-        $VALUES_ARG $SET_POSTGRES $SET_POSTGRES_PASSWORD $SET_DIFY_SECRET $SET_REDIS_PASSWORD $SET_QDRANT_KEY $SET_INGRESS $SET_DOMAINS $SET_OTEL
+    if [ "$PLAN_STAGE" == "true" ]; then
+        helm diff upgrade "$RELEASE_NAME" "$HELM_CHART" \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --timeout 45m \
+            --allow-unreleased \
+            $VALUES_ARG $SET_POSTGRES $SET_POSTGRES_PASSWORD $SET_DIFY_SECRET $SET_REDIS_PASSWORD $SET_QDRANT_KEY $SET_INGRESS $SET_DOMAINS $SET_OTEL \
+            > helm-diff-dify.log || true
+        echo -e "${GREEN}✓ Helm diffs written to helm-diff-*.log${NC}\n"
+        echo -e "${GREEN}✓ Plan stage complete (no changes applied).${NC}"
+        exit 0
+    else
+        helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --timeout 45m \
+            --atomic \
+            --wait \
+            $VALUES_ARG $SET_POSTGRES $SET_POSTGRES_PASSWORD $SET_DIFY_SECRET $SET_REDIS_PASSWORD $SET_QDRANT_KEY $SET_INGRESS $SET_DOMAINS $SET_OTEL
 
-    echo -e "${GREEN}✓ Dify deployed${NC}\n"
+        echo -e "${GREEN}✓ Dify deployed${NC}\n"
+    fi
 
     kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true
     kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-web -n "$NAMESPACE" || true
