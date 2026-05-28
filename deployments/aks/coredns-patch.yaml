@@ -17,7 +17,12 @@ data:
           ttl 30
         }
         prometheus :9153
-        forward . 8.8.8.8 1.1.1.1 {
+        # Azure DNS (168.63.129.16) MUST be first so Private DNS zones (e.g.
+        # *.privatelink.postgres.database.azure.com) resolve. Without it,
+        # in-cluster workloads lose access to private-link Postgres.
+        # Public resolvers are kept as fallback for general internet lookups
+        # (e.g. cert-manager ACME helpers).
+        forward . 168.63.129.16 8.8.8.8 1.1.1.1 {
           max_concurrent 1000
         }
         cache 30
