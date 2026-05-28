@@ -276,7 +276,7 @@ get_secret() {
 }
 SECRETS_DIR=$(mktemp -d); trap 'rm -rf "$SECRETS_DIR"' EXIT
 
-DIFY_ARGS=( --namespace "$NAMESPACE" --timeout 45m )
+DIFY_ARGS=( --namespace "$NAMESPACE" )
 [[ -f "$VALUES_FILE" ]] && DIFY_ARGS+=( -f "$VALUES_FILE" )
 
 POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn 2>/dev/null || true)
@@ -341,7 +341,7 @@ if is_plan; then
 fi
 
 helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" "${DIFY_ARGS[@]}" \
-    --create-namespace --atomic --wait
+    --create-namespace --atomic --wait --timeout 45m
 echo -e "${GREEN}✓ Dify deployed${NC}\n"
 
 kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true
