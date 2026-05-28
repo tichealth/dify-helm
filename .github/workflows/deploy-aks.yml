@@ -1,5 +1,9 @@
 name: Deploy or teardown Dify on AKS
 
+# Two-job flow: plan -> (Environment approval) -> apply.
+# Required reviewers must be configured on the GitHub Environment (`dev`/`test`/`prod`)
+# for the apply gate to actually pause. See deployments/aks/GITHUB_ACTIONS_SECRETS.md.
+
 on:
   workflow_dispatch:
     inputs:
@@ -12,28 +16,19 @@ on:
         description: 'Deploy or teardown'
         required: true
         type: choice
-        options:
-          - deploy
-          - teardown
+        options: [deploy, teardown]
         default: 'deploy'
       deploy_mode:
         description: 'Deploy scope (when action=deploy)'
         required: true
         type: choice
-        options:
-          - all
-          - app
-          - db
+        options: [all, app, db]
         default: 'all'
       environment:
         description: 'Environment (tfvars)'
         required: true
         type: choice
-        options:
-          - dev
-          - test
-          - lite-prod
-          - prod-full
+        options: [dev, test, lite-prod, prod-full]
         default: 'dev'
 
 env:
@@ -51,118 +46,31 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Preflight (ensure env vars/secrets set)
-        run: |
-          set -euo pipefail
-
-          [ -n "${{ secrets.AZURE_CREDENTIALS }}" ] || (echo "Missing GitHub Environment secret: AZURE_CREDENTIALS (JSON with clientId, clientSecret, tenantId, subscriptionId)" && exit 1)
-
-          [ -n "${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" ] || (echo "Missing GitHub Environment variable: AZURE_BLOB_ACCOUNT_NAME" && exit 1)
-          [ -n "${{ vars.BACKEND_RESOURCE_GROUP }}" ] || (echo "Missing GitHub Environment variable: BACKEND_RESOURCE_GROUP" && exit 1)
-          [ -n "${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}" ] || (echo "Missing GitHub Environment secret: AZURE_BLOB_ACCOUNT_KEY" && exit 1)
-
-          [ -n "${{ secrets.DIFY_SECRET_KEY }}" ] || (echo "Missing GitHub Environment secret: DIFY_SECRET_KEY" && exit 1)
-          [ -n "${{ secrets.POSTGRESQL_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: POSTGRESQL_PASSWORD" && exit 1)
-          [ -n "${{ secrets.REDIS_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: REDIS_PASSWORD" && exit 1)
-          [ -n "${{ secrets.QDRANT_API_KEY }}" ] || (echo "Missing GitHub Environment secret: QDRANT_API_KEY" && exit 1)
-
-      - name: Azure Login
-        uses: azure/login@v2
+      - uses: ./.github/actions/setup-aks
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          environment: ${{ inputs.environment }}
+          azure_credentials: ${{ secrets.AZURE_CREDENTIALS }}
+          azure_blob_account_name: ${{ vars.AZURE_BLOB_ACCOUNT_NAME }}
+          azure_blob_account_key: ${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}
+          backend_resource_group: ${{ vars.BACKEND_RESOURCE_GROUP }}
+          dify_secret_key: ${{ secrets.DIFY_SECRET_KEY }}
+          postgresql_password: ${{ secrets.POSTGRESQL_PASSWORD }}
+          redis_password: ${{ secrets.REDIS_PASSWORD }}
+          qdrant_api_key: ${{ secrets.QDRANT_API_KEY }}
+          phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
 
-      - name: Set ARM_* for Terraform provider
-        env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-        run: |
-          echo "ARM_CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .clientId)" >> $GITHUB_ENV
-          echo "ARM_TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .tenantId)" >> $GITHUB_ENV
-          echo "ARM_SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .subscriptionId)" >> $GITHUB_ENV
-          echo "ARM_CLIENT_SECRET=$(echo "$AZURE_CREDENTIALS" | jq -r .clientSecret)" >> $GITHUB_ENV
-
-      - name: Copy environment tfvars
-        run: |
-          cp "environments/${{ inputs.environment }}.tfvars" terraform.tfvars
-          echo "Using environment: ${{ inputs.environment }}"
-
-      - name: Set Terraform variables from GitHub Variables and Secrets
-        run: |
-          echo "TF_VAR_azure_blob_account_name=${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" >> $GITHUB_ENV
-          echo "TF_VAR_azure_blob_account_key=${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}" >> $GITHUB_ENV
-          echo "TF_VAR_azure_blob_account_url=https://${{ vars.AZURE_BLOB_ACCOUNT_NAME }}.blob.core.windows.net" >> $GITHUB_ENV
-          echo "TF_VAR_dify_secret_key=${{ secrets.DIFY_SECRET_KEY }}" >> $GITHUB_ENV
-          echo "TF_VAR_postgresql_password=${{ secrets.POSTGRESQL_PASSWORD }}" >> $GITHUB_ENV
-          echo "TF_VAR_redis_password=${{ secrets.REDIS_PASSWORD }}" >> $GITHUB_ENV
-          echo "TF_VAR_qdrant_api_key=${{ secrets.QDRANT_API_KEY }}" >> $GITHUB_ENV
-          # OpenTelemetry export endpoint (Arize Phoenix). Optional per-Environment
-          # variable. Unset => deploy.sh leaves api.otel.enabled=false.
-          echo "PHOENIX_OTLP_ENDPOINT=${{ vars.PHOENIX_OTLP_ENDPOINT }}" >> $GITHUB_ENV
-          # Explicit ingress host override (project_name may not include env suffix).
-          case "${{ inputs.environment }}" in
-            lite-prod|prod-full) echo "DIFY_INGRESS_HOST=dify-prod.tichealth.com.au" >> $GITHUB_ENV ;;
-            dev)                 echo "DIFY_INGRESS_HOST=dify-dev.tichealth.com.au" >> $GITHUB_ENV ;;
-            test)                echo "DIFY_INGRESS_HOST=dify-test.tichealth.com.au" >> $GITHUB_ENV ;;
-            *)                   echo "DIFY_INGRESS_HOST=dify-${{ inputs.environment }}.tichealth.com.au" >> $GITHUB_ENV ;;
-          esac
-
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          # 1.10.x bundles HashiCorp's current provider-signing GPG key.
-          # Older CLIs (e.g. 1.6.0) fail `terraform init` with
-          # "openpgp: key expired" because their bundled key has expired.
-          terraform_version: "1.10.5"
-          terraform_wrapper: false
-
-      - name: Write Terraform backend config (remote state)
-        run: |
-          cat > backend.azurerm.tfvars <<'EOF'
-          resource_group_name  = "${{ vars.BACKEND_RESOURCE_GROUP }}"
-          storage_account_name = "${{ vars.AZURE_BLOB_ACCOUNT_NAME }}"
-          container_name       = "tfstate"
-          key                  = "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod.terraform.tfstate' || format('{0}.terraform.tfstate', inputs.environment) }}"
-          access_key           = "${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}"
-          EOF
-          chmod 600 backend.azurerm.tfvars
-
-      - name: Install Azure CLI, kubectl, Helm
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          az version
-          curl -sLO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          helm version
-          helm plugin install https://github.com/databus23/helm-diff || true
-
-      - name: Terraform Init
-        run: |
-          terraform init -reconfigure \
-            -backend-config="resource_group_name=${{ vars.BACKEND_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod.terraform.tfstate' || format('{0}.terraform.tfstate', inputs.environment) }}" \
-            -backend-config="access_key=${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}"
-
-      - name: Plan deploy (Terraform + Helm diff)
+      - name: Plan deploy
         if: inputs.action == 'deploy'
         timeout-minutes: 60
         run: |
           chmod +x deploy.sh
-          case "${{ inputs.deploy_mode }}" in
-            all) ./deploy.sh --all --plan-stage ;;
-            app) ./deploy.sh --app --plan-stage ;;
-            db)  ./deploy.sh --db  --plan-stage ;;
-          esac
+          ./deploy.sh --${{ inputs.deploy_mode }} --plan-stage
 
-      - name: Plan teardown (terraform plan -destroy)
+      - name: Plan teardown
         if: inputs.action == 'teardown'
-        run: |
-          echo "PLAN: terraform plan -destroy -out=tfplan (no changes applied)."
-          terraform plan -destroy -out=tfplan 2>&1 | tee terraform-plan-destroy.log
+        run: terraform plan -destroy -out=tfplan 2>&1 | tee terraform-plan-destroy.log
 
       - name: Upload plan artifacts
         if: always()
@@ -180,89 +88,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Same environment as plan; this is the gate where Required reviewers pauses the run.
     environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
     defaults:
       run:
         working-directory: ${{ env.TF_DIR }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Preflight (ensure env vars/secrets set)
-        run: |
-          set -euo pipefail
-
-          [ -n "${{ secrets.AZURE_CREDENTIALS }}" ] || (echo "Missing GitHub Environment secret: AZURE_CREDENTIALS (JSON with clientId, clientSecret, tenantId, subscriptionId)" && exit 1)
-
-          [ -n "${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" ] || (echo "Missing GitHub Environment variable: AZURE_BLOB_ACCOUNT_NAME" && exit 1)
-          [ -n "${{ vars.BACKEND_RESOURCE_GROUP }}" ] || (echo "Missing GitHub Environment variable: BACKEND_RESOURCE_GROUP" && exit 1)
-          [ -n "${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}" ] || (echo "Missing GitHub Environment secret: AZURE_BLOB_ACCOUNT_KEY" && exit 1)
-
-          [ -n "${{ secrets.DIFY_SECRET_KEY }}" ] || (echo "Missing GitHub Environment secret: DIFY_SECRET_KEY" && exit 1)
-          [ -n "${{ secrets.POSTGRESQL_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: POSTGRESQL_PASSWORD" && exit 1)
-          [ -n "${{ secrets.REDIS_PASSWORD }}" ] || (echo "Missing GitHub Environment secret: REDIS_PASSWORD" && exit 1)
-          [ -n "${{ secrets.QDRANT_API_KEY }}" ] || (echo "Missing GitHub Environment secret: QDRANT_API_KEY" && exit 1)
-
-      - name: Azure Login
-        uses: azure/login@v2
+      - uses: ./.github/actions/setup-aks
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Set ARM_* for Terraform provider
-        env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-        run: |
-          echo "ARM_CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .clientId)" >> $GITHUB_ENV
-          echo "ARM_TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .tenantId)" >> $GITHUB_ENV
-          echo "ARM_SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r .subscriptionId)" >> $GITHUB_ENV
-          echo "ARM_CLIENT_SECRET=$(echo "$AZURE_CREDENTIALS" | jq -r .clientSecret)" >> $GITHUB_ENV
-
-      - name: Copy environment tfvars
-        run: |
-          cp "environments/${{ inputs.environment }}.tfvars" terraform.tfvars
-          echo "Using environment: ${{ inputs.environment }}"
-
-      - name: Set Terraform variables from GitHub Variables and Secrets
-        run: |
-          echo "TF_VAR_azure_blob_account_name=${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" >> $GITHUB_ENV
-          echo "TF_VAR_azure_blob_account_key=${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}" >> $GITHUB_ENV
-          echo "TF_VAR_azure_blob_account_url=https://${{ vars.AZURE_BLOB_ACCOUNT_NAME }}.blob.core.windows.net" >> $GITHUB_ENV
-          echo "TF_VAR_dify_secret_key=${{ secrets.DIFY_SECRET_KEY }}" >> $GITHUB_ENV
-          echo "TF_VAR_postgresql_password=${{ secrets.POSTGRESQL_PASSWORD }}" >> $GITHUB_ENV
-          echo "TF_VAR_redis_password=${{ secrets.REDIS_PASSWORD }}" >> $GITHUB_ENV
-          echo "TF_VAR_qdrant_api_key=${{ secrets.QDRANT_API_KEY }}" >> $GITHUB_ENV
-          echo "PHOENIX_OTLP_ENDPOINT=${{ vars.PHOENIX_OTLP_ENDPOINT }}" >> $GITHUB_ENV
-          case "${{ inputs.environment }}" in
-            lite-prod|prod-full) echo "DIFY_INGRESS_HOST=dify-prod.tichealth.com.au" >> $GITHUB_ENV ;;
-            dev)                 echo "DIFY_INGRESS_HOST=dify-dev.tichealth.com.au" >> $GITHUB_ENV ;;
-            test)                echo "DIFY_INGRESS_HOST=dify-test.tichealth.com.au" >> $GITHUB_ENV ;;
-            *)                   echo "DIFY_INGRESS_HOST=dify-${{ inputs.environment }}.tichealth.com.au" >> $GITHUB_ENV ;;
-          esac
-
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.10.5"
-          terraform_wrapper: false
-
-      - name: Install Azure CLI, kubectl, Helm
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          az version
-          curl -sLO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          helm version
-
-      - name: Terraform Init
-        run: |
-          terraform init -reconfigure \
-            -backend-config="resource_group_name=${{ vars.BACKEND_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ vars.AZURE_BLOB_ACCOUNT_NAME }}" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod.terraform.tfstate' || format('{0}.terraform.tfstate', inputs.environment) }}" \
-            -backend-config="access_key=${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}"
+          environment: ${{ inputs.environment }}
+          azure_credentials: ${{ secrets.AZURE_CREDENTIALS }}
+          azure_blob_account_name: ${{ vars.AZURE_BLOB_ACCOUNT_NAME }}
+          azure_blob_account_key: ${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}
+          backend_resource_group: ${{ vars.BACKEND_RESOURCE_GROUP }}
+          dify_secret_key: ${{ secrets.DIFY_SECRET_KEY }}
+          postgresql_password: ${{ secrets.POSTGRESQL_PASSWORD }}
+          redis_password: ${{ secrets.REDIS_PASSWORD }}
+          qdrant_api_key: ${{ secrets.QDRANT_API_KEY }}
+          phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
 
       - name: Download plan artifacts
         uses: actions/download-artifact@v4
@@ -270,56 +116,30 @@ jobs:
           name: "${{ github.run_id }}-${{ github.run_attempt }}-plan"
           path: ${{ env.TF_DIR }}
 
-      - name: Apply deploy (Terraform apply tfplan + Helm)
+      - name: Apply deploy
         if: inputs.action == 'deploy'
         timeout-minutes: 60
         run: |
           chmod +x deploy.sh
-          case "${{ inputs.deploy_mode }}" in
-            all) ./deploy.sh --all --apply-stage ;;
-            app) ./deploy.sh --app --apply-stage ;;
-            db)  ./deploy.sh --db  --apply-stage ;;
-          esac
+          ./deploy.sh --${{ inputs.deploy_mode }} --apply-stage
 
-      - name: Output DNS configuration (IP for first-time setup)
-        id: dns
-        if: inputs.action == 'deploy' && (inputs.deploy_mode == 'all' || inputs.deploy_mode == 'app')
+      - name: Output DNS configuration
+        if: inputs.action == 'deploy' && inputs.deploy_mode != 'db'
         run: |
           CLUSTER=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
           RG=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
-          if [ -z "$CLUSTER" ] || [ -z "$RG" ]; then
-            echo "Could not get cluster/resource group (Terraform state missing?). Skip DNS step."
-            exit 0
-          fi
+          [ -z "$CLUSTER" ] || [ -z "$RG" ] && { echo "Could not get cluster/RG from TF state; skipping DNS step."; exit 0; }
           az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
-          LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-          if [ -z "$LB_IP" ]; then
-            LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
-          fi
-          case "${{ inputs.environment }}" in
-            lite-prod|prod-full) INGRESS_HOST="dify-prod.tichealth.com.au" ;;
-            dev)                 INGRESS_HOST="dify-dev.tichealth.com.au" ;;
-            test)                INGRESS_HOST="dify-test.tichealth.com.au" ;;
-            *)                   INGRESS_HOST="dify-${{ inputs.environment }}.tichealth.com.au" ;;
-          esac
-          echo ""
+          LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+          [ -z "$LB_IP" ] && LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
           echo "=============================================="
-          echo "DNS: Point your domain to this address"
+          echo "DNS: ${DIFY_INGRESS_HOST}  ->  ${LB_IP:-<pending>}"
           echo "=============================================="
-          echo "Ingress host: $INGRESS_HOST"
-          echo "IP/Hostname:  ${LB_IP:-<pending>}"
-          echo ""
-          echo "Create DNS record:  $INGRESS_HOST  ->  ${LB_IP:-<IP from kubectl get svc -n ingress-nginx>}"
-          echo "=============================================="
-          echo ""
-          echo "lb_ip=$LB_IP" >> $GITHUB_OUTPUT
-          echo "ingress_host=$INGRESS_HOST" >> $GITHUB_OUTPUT
 
-      - name: Apply teardown (uninstall Helm + terraform apply tfplan)
+      - name: Apply teardown
         if: inputs.action == 'teardown'
         timeout-minutes: 60
         run: |
-          echo "Applying destroy plan from tfplan."
           CLUSTER=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
           RG=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
           if [ -n "$CLUSTER" ] && [ -n "$RG" ]; then
