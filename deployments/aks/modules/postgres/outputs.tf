@@ -1,9 +1,9 @@
 output "postgresql_fqdn" {
   description = "PostgreSQL FQDN (private when VNet, public otherwise)"
-  value       = var.use_azure_postgres ? (
+  value = var.use_azure_postgres ? (
     var.create_vnet_for_postgres ?
-      "${azurerm_postgresql_flexible_server.pg[0].name}.privatelink.postgres.database.azure.com" :
-      azurerm_postgresql_flexible_server.pg[0].fqdn
+    "${azurerm_postgresql_flexible_server.pg[0].name}.privatelink.postgres.database.azure.com" :
+    azurerm_postgresql_flexible_server.pg[0].fqdn
   ) : "N/A"
 }
 

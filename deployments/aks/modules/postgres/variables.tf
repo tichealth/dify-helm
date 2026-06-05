@@ -73,39 +73,45 @@ variable "postgres_version" {
 }
 
 variable "postgresql_username" {
-  type        = string
-  default     = "postgres"
+  type    = string
+  default = "postgres"
 }
 
 variable "postgresql_password" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 variable "postgresql_database" {
-  type        = string
-  default     = "dify"
+  type    = string
+  default = "dify"
 }
 
 variable "plugin_database_name" {
-  type        = string
-  default     = "dify_plugin"
+  type    = string
+  default = "dify_plugin"
 }
 
 variable "postgres_sku_name" {
-  type        = string
-  default     = "B_Standard_B1ms"
+  type    = string
+  default = "B_Standard_B1ms"
 }
 
 variable "postgres_storage_mb" {
-  type        = number
-  default     = 32768
+  type    = number
+  default = 32768
 }
 
 variable "postgres_storage_tier" {
   type        = string
   default     = null
   description = "Storage tier (e.g. P4, P15, P30); null = Azure default"
+}
+
+variable "postgres_max_connections" {
+  type        = number
+  default     = null
+  description = "Optional PostgreSQL max_connections. Null = leave Azure default."
 }
 
 variable "postgres_public_access" {
@@ -115,8 +121,8 @@ variable "postgres_public_access" {
 }
 
 variable "postgres_require_secure_transport" {
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "postgres_open_firewall_all" {

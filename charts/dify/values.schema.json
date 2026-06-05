@@ -52,6 +52,14 @@
             "tag": { "type": "string" },
             "pullPolicy": { "type": "string" }
           }
+        },
+        "agentbox": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string" }
+          }
         }
       }
     },
@@ -88,6 +96,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify API pods.",
+          "default": false
+        },
         "autoscaling": {
           "type": "object",
           "properties": {
@@ -251,6 +264,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify worker pods.",
+          "default": false
+        },
         "autoscaling": {
           "type": "object",
           "properties": {
@@ -304,6 +322,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify Celery Beat pods.",
+          "default": false
+        },
         "customLivenessProbe": { "type": "object" },
         "customReadinessProbe": { "type": "object" },
         "customStartupProbe": { "type": "object" },
@@ -354,6 +377,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify nginx proxy pods.",
+          "default": false
+        },
         "customLivenessProbe": { "type": "object" },
         "customReadinessProbe": { "type": "object" },
         "customStartupProbe": { "type": "object" },
@@ -423,6 +451,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify web pods.",
+          "default": false
+        },
         "autoscaling": {
           "type": "object",
           "properties": {
@@ -519,6 +552,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify sandbox pods.",
+          "default": false
+        },
         "autoscaling": {
           "type": "object",
           "properties": {
@@ -610,6 +648,67 @@
         }
       }
     },
+    "agentbox": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "affinity": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify agentbox pods.",
+          "default": false
+        },
+        "podSecurityContext": { "type": "object" },
+        "containerSecurityContext": { "type": "object" },
+        "extraEnv": { "type": "array" },
+        "extraVolumes": { "type": "array" },
+        "extraVolumeMounts": { "type": "array" },
+        "service": {
+          "type": "object",
+          "properties": {
+            "port": { "type": "integer" },
+            "annotations": { "type": "object" },
+            "labels": { "type": "object" },
+            "clusterIP": { "type": "string" }
+          }
+        },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "create": { "type": "boolean" },
+            "name": { "type": "string" },
+            "automountServiceAccountToken": { "type": "boolean" },
+            "annotations": { "type": "object" }
+          }
+        },
+        "updateStrategy": { "type": "object" },
+        "hostAliases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ip": { "type": "string" },
+              "hostnames": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["ip", "hostnames"]
+          }
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        }
+      }
+    },
     "ssrfProxy": {
       "type": "object",
       "properties": {
@@ -620,6 +719,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify SSRF proxy pods.",
+          "default": false
+        },
         "customLivenessProbe": { "type": "object" },
         "customReadinessProbe": { "type": "object" },
         "customStartupProbe": { "type": "object" },
@@ -696,6 +800,11 @@
         "affinity": { "type": "object" },
         "tolerations": { "type": "array" },
         "priorityClassName": { "type": "string" },
+        "shareProcessNamespace": {
+          "type": "boolean",
+          "description": "Share a single process namespace between all of the containers in Dify plugin daemon pods.",
+          "default": false
+        },
         "customLivenessProbe": { "type": "object" },
         "customReadinessProbe": { "type": "object" },
         "customStartupProbe": { "type": "object" },
