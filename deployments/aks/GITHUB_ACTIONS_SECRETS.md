@@ -236,9 +236,20 @@ Note: Because GitHub Environment secrets are only available to jobs that referen
 When you click **Run workflow** you choose:
 
 - **enabled:** Check to allow the workflow to run (default: unchecked = disabled).
-- **action:** `deploy` or `teardown`
+- **action:** `deploy`, `teardown`, or `force-unlock`
+- **lock_id:** Terraform lock UUID (required when action = `force-unlock`; copy `Lock Info -> ID` from the error)
 - **deploy_mode:** `all`, `app`, or `db` (only when action = deploy)
 - **environment:** `dev`, `test`, `lite-prod`, or `prod-full` (picks the tfvars file **and** the GitHub Environment for secrets/variables)
+
+### Force-unlock stale Terraform state
+
+Use when a plan/apply fails with `Error acquiring the state lock` and you are sure no other run is still in progress.
+
+1. Run workflow with **action** = `force-unlock`, the matching **environment**, and **lock_id** from the error.
+2. Approve the environment gate if required.
+3. Re-run with **action** = `deploy` once unlock succeeds.
+
+Only unlock the environment whose state file is locked (`dev` → `dev.terraform.tfstate`, etc.). Do not force-unlock while another plan/apply is genuinely running.
 
 **How environment is used:** The selected value chooses both (1) which tfvars file is copied (e.g. `dev.tfvars`, `lite-prod.tfvars`) and (2) which GitHub Environment’s Variables and Secrets are used. Mapping: **dev** → env `dev`, **test** → env `test`, **lite-prod** and **prod-full** → env `prod`. So create GitHub Environments named exactly `dev`, `test`, and `prod`, and add the Variables and Secrets to each.
 
@@ -255,3 +266,6 @@ When you click **Run workflow** you choose:
 
 - **Workflow file not on GitHub yet**  
   Commit and push `.github/workflows/deploy-aks.yml` (and the rest of the repo). After push, the workflow appears under Actions and you can run it from the branch you pushed to.
+
+- **`Error acquiring the state lock`**  
+  Another process holds the remote state lock (often a cancelled CI run or a local `terraform plan`). Confirm nothing else is running, then use **action** = `force-unlock` with the lock **ID** from the error and the correct **environment**. Or run locally: `terraform force-unlock -force <lock-id>`.
