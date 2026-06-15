@@ -13,11 +13,16 @@ on:
         type: boolean
         default: false
       action:
-        description: 'Deploy or teardown'
+        description: 'Deploy, teardown, or force-unlock stale Terraform state'
         required: true
         type: choice
-        options: [deploy, teardown]
+        options: [deploy, teardown, force-unlock]
         default: 'deploy'
+      lock_id:
+        description: 'Terraform lock ID (required when action=force-unlock; copy from the state lock error)'
+        required: false
+        type: string
+        default: ''
       deploy_mode:
         description: 'Deploy scope (when action=deploy)'
         required: true
@@ -35,8 +40,54 @@ env:
   TF_DIR: deployments/aks
 
 jobs:
+  force-unlock:
+    if: inputs.enabled && inputs.action == 'force-unlock'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-aks
+        with:
+          environment: ${{ inputs.environment }}
+          azure_credentials: ${{ secrets.AZURE_CREDENTIALS }}
+          azure_blob_account_name: ${{ vars.AZURE_BLOB_ACCOUNT_NAME }}
+          azure_blob_account_key: ${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}
+          backend_resource_group: ${{ vars.BACKEND_RESOURCE_GROUP }}
+          dify_secret_key: ${{ secrets.DIFY_SECRET_KEY }}
+          postgresql_password: ${{ secrets.POSTGRESQL_PASSWORD }}
+          redis_password: ${{ secrets.REDIS_PASSWORD }}
+          qdrant_api_key: ${{ secrets.QDRANT_API_KEY }}
+          phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
+
+      - name: Validate lock ID
+        run: |
+          LOCK_ID='${{ inputs.lock_id }}'
+          if [ -z "$LOCK_ID" ]; then
+            echo "lock_id is required when action=force-unlock."
+            echo "Copy the ID from the Terraform state lock error (Lock Info -> ID)."
+            exit 1
+          fi
+          if ! echo "$LOCK_ID" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+            echo "lock_id does not look like a Terraform lock UUID: $LOCK_ID"
+            exit 1
+          fi
+          echo "LOCK_ID=$LOCK_ID" >> "$GITHUB_ENV"
+
+      - name: Force-unlock Terraform state
+        run: |
+          echo "Unlocking state for environment: ${{ inputs.environment }}"
+          terraform force-unlock -force "$LOCK_ID"
+          echo "State unlocked. Re-run with action=deploy to continue."
+
   plan:
-    if: inputs.enabled
+    if: inputs.enabled && inputs.action != 'force-unlock'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -83,7 +134,7 @@ jobs:
             ${{ env.TF_DIR }}/helm-diff*.log
 
   apply:
-    if: inputs.enabled
+    if: inputs.enabled && inputs.action != 'force-unlock'
     needs: [plan]
     runs-on: ubuntu-latest
     permissions:
