@@ -57,6 +57,23 @@ api:
       accessModes: ReadWriteMany
       size: 5Gi
 
+  # API request concurrency.
+  # These API calls are I/O-bound (they spend almost all their time waiting on
+  # the LLM provider), and Dify runs gunicorn with the gevent worker class, so a
+  # single worker process can serve many concurrent requests cheaply as green
+  # threads. The image default is 1 worker x 10 connections = ~10 concurrent,
+  # which caused 504s once more than ~10 parallel requests were in flight.
+  # On the small dev node we keep 1 worker (each worker is a full process,
+  # ~300-500Mi) and only raise connections. Prod overrides these via
+  # values-prod.yaml (more workers + replicas).
+  extraEnv:
+    - name: SERVER_WORKER_CLASS
+      value: "gevent"
+    - name: SERVER_WORKER_AMOUNT
+      value: "1"
+    - name: SERVER_WORKER_CONNECTIONS
+      value: "25"
+
   # OpenTelemetry export to self-hosted Arize Phoenix.
   # Defaults off; enabled and pointed at the right Phoenix per environment by
   # deploy.sh when PHOENIX_OTLP_ENDPOINT is set (sourced from a GitHub
@@ -192,6 +209,12 @@ ingress:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Long-running LLM/workflow requests (e.g. /v1/chat-messages in blocking or
+    # streaming mode) can exceed ingress-nginx's default 60s timeouts and return
+    # 504. Raise read/send timeouts to 1h to match the Dify internal proxy.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "75"
   hosts:
     - host: dify-dev.tichealth.com.au  # default; overridden by deploy.sh for prod/test
       paths:

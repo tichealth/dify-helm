@@ -1,0 +1,49 @@
+# Production overlay for Dify on AKS.
+#
+# This file is layered ON TOP OF values.yaml (helm `-f values.yaml -f values-prod.yaml`)
+# and is auto-applied by deploy.sh whenever the terraform project_name matches
+# "*prod*" (i.e. lite-prod and prod-full). It only overrides what should differ
+# in production; everything else is inherited from values.yaml.
+#
+# Sizing rationale (see also LITE_PROD_VS_PROD.md):
+#   - lite-prod : 1 x Standard_D4s_v5  = 4 vCPU / 16 GiB   (~3.8 vCPU / ~13 GiB allocatable)
+#   - prod-full : 3 x Standard_D4s_v5  = 12 vCPU / 48 GiB  (~11.5 vCPU / ~38 GiB allocatable)
+#
+# The values below are chosen to fit even the single-node lite-prod box, and to
+# spread across 3 nodes for HA on prod-full.
+#
+# Concurrency capacity = api.replicas x SERVER_WORKER_AMOUNT x SERVER_WORKER_CONNECTIONS
+#                      = 2 x 2 x 50 = ~200 concurrent in-flight requests.
+# Because requests are I/O-bound (waiting on the LLM), gevent green-threads make
+# the connection count cheap; the real ceiling in practice becomes the LLM
+# provider rate limit and the Postgres connection pool, not CPU.
+
+api:
+  # 2 replicas: HA across nodes on prod-full; still schedulable on lite-prod's single node.
+  replicas: 2
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      memory: "3Gi"
+  extraEnv:
+    - name: SERVER_WORKER_CLASS
+      value: "gevent"
+    # 2 gunicorn worker processes to use multiple cores for the CPU-bound parts
+    # (request parsing, JSON/SSE serialization). Each worker is a full process.
+    - name: SERVER_WORKER_AMOUNT
+      value: "2"
+    # 50 gevent connections per worker for the I/O-bound LLM wait.
+    - name: SERVER_WORKER_CONNECTIONS
+      value: "50"
+
+# Async task workers (celery) also get more headroom in prod.
+worker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      memory: "1536Mi"
