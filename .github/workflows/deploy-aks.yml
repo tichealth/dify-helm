@@ -83,8 +83,18 @@ jobs:
       - name: Force-unlock Terraform state
         run: |
           echo "Unlocking state for environment: ${{ inputs.environment }}"
-          terraform force-unlock -force "$LOCK_ID"
-          echo "State unlocked. Re-run with action=deploy to continue."
+          set +e
+          OUT=$(terraform force-unlock -force "$LOCK_ID" 2>&1)
+          RC=$?
+          set -e
+          echo "$OUT"
+          if [ "$RC" -eq 0 ]; then
+            echo "State unlocked. Re-run with action=deploy to continue."
+          elif echo "$OUT" | grep -qiE 'terraformlockid.*was empty|lock info.*not found|no.*lock'; then
+            echo "No active lock on this state file — already unlocked. Re-run with action=deploy."
+          else
+            exit "$RC"
+          fi
 
   plan:
     if: inputs.enabled && inputs.action != 'force-unlock'

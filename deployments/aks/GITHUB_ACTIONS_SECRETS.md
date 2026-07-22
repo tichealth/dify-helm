@@ -251,6 +251,8 @@ Use when a plan/apply fails with `Error acquiring the state lock` and you are su
 
 Only unlock the environment whose state file is locked (`dev` → `dev.terraform.tfstate`, etc.). Do not force-unlock while another plan/apply is genuinely running.
 
+If force-unlock reports `terraformlockid was empty`, the lock is already gone (e.g. cleared locally or by a prior run). Skip unlock and run **action** = `deploy` directly.
+
 **How environment is used:** The selected value chooses both (1) which tfvars file is copied (e.g. `dev.tfvars`, `lite-prod.tfvars`) and (2) which GitHub Environment’s Variables and Secrets are used. Mapping: **dev** → env `dev`, **test** → env `test`, **lite-prod** and **prod-full** → env `prod`. So create GitHub Environments named exactly `dev`, `test`, and `prod`, and add the Variables and Secrets to each.
 
 ## Troubleshooting: Can't run the workflow
