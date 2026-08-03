@@ -60,21 +60,18 @@ graph TB
     ProxyPod -->|Marketplace| MarketplaceAPI[🛒 Marketplace API<br/>External]
 
     %% Backend Pods
-    APIService --> APIPod[📦 API Pod<br/>langgenius/dify-api:1.12.1<br/>Port: 5001]
-    WebService --> WebPod[📦 Web Pod<br/>langgenius/dify-web:1.12.1<br/>Port: 3000]
-    PluginService --> PluginPod[📦 Plugin Daemon Pod<br/>langgenius/dify-plugin-daemon:0.5.3-local<br/>Ports: 5002, 5003]
+    APIService --> APIPod[📦 API Pod<br/>langgenius/dify-api:1.14.2<br/>Port: 5001]
+    WebService --> WebPod[📦 Web Pod<br/>langgenius/dify-web:1.14.2<br/>Port: 3000]
+    PluginService --> PluginPod[📦 Plugin Daemon Pod<br/>langgenius/dify-plugin-daemon:0.6.1-local<br/>Ports: 5002, 5003]
 
     %% Worker Pod (Background Processing)
-    WorkerPod[📦 Worker Pod<br/>langgenius/dify-api:1.12.1]
+    WorkerPod[📦 Worker Pod<br/>langgenius/dify-api:1.14.2]
 
     %% Beat Pod (Periodic task scheduler)
-    BeatPod[📦 Beat Pod<br/>langgenius/dify-api:1.12.1]
+    BeatPod[📦 Beat Pod<br/>langgenius/dify-api:1.14.2]
 
     %% Sandbox Service
-    SandboxService[🏖️ Sandbox Service<br/>Port: 8194] --> SandboxPod[📦 Sandbox Pod<br/>langgenius/dify-sandbox:0.2.12<br/>Port: 8194]
-
-    %% Agentbox (built-in, single-replica SSH endpoint for SSHSandboxEnvironment)
-    AgentboxService[🤖 Agentbox Service<br/>SSH: 22] --> AgentboxPod[📦 Agentbox Pod<br/>langgenius/dify-agentbox<br/>Port: 22]
+    SandboxService[🏖️ Sandbox Service<br/>Port: 8194] --> SandboxPod[📦 Sandbox Pod<br/>langgenius/dify-sandbox:0.2.15<br/>Port: 8194]
 
     %% SSRF Proxy Service
     SSRFService[🛡️ SSRF Proxy Service<br/>Port: 3128] --> SSRFPod[📦 SSRF Proxy Pod<br/>ubuntu/squid:latest<br/>Port: 3128]
@@ -82,9 +79,6 @@ graph TB
     %% Internal Communications
     APIPod -.->|"Code execution<br/>(non-streamed workflow, debugging)"| SandboxService
     WorkerPod -.->|"Code execution<br/>(streamed workflow, etc.)"| SandboxService
-    APIPod -.->|"Shell execution<br/>(non-streamed workflow, debugging)"| AgentboxService
-    WorkerPod -.->|"Shell execution<br/>(streamed workflow, etc.)"| AgentboxService
-    AgentboxPod -.->|API callbacks| APIService
     SandboxPod -.->|API callbacks| APIService
     APIPod -.->|SSRF Protection| SSRFService
     WorkerPod -.->|SSRF Protection| SSRFService
@@ -162,8 +156,8 @@ graph TB
     classDef storageClass fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
     classDef externalClass fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
 
-    class APIPod,WebPod,WorkerPod,BeatPod,SandboxPod,AgentboxPod,SSRFPod,PluginPod podClass
-    class APIService,WebService,SandboxService,AgentboxService,SSRFService,PluginService,ProxyService serviceClass
+    class APIPod,WebPod,WorkerPod,BeatPod,SandboxPod,SSRFPod,PluginPod podClass
+    class APIService,WebService,SandboxService,SSRFService,PluginService,ProxyService serviceClass
     class PostgresService,RedisService,VectorDBService,WeaviateDB,QdrantDB,MilvusDB,PGVectorDB storageClass
     class ExternalDB,ExternalRedis,ExternalVector,ExternalStorage,S3Storage,AzureStorage,GCSStorage externalClass
 ```
@@ -189,12 +183,12 @@ The Nginx proxy handles traffic routing with the following rules:
 
 | Component | Image | Port | Role |
 |-----------|-------|------|------|
-| **API** | `langgenius/dify-api:1.12.1` | 5001 | RESTful API server, business logic processing |
-| **Web** | `langgenius/dify-web:1.12.1` | 3000 | Web UI frontend |
-| **Worker** | `langgenius/dify-api:1.12.1` | - | Background task processing (Celery) |
-| **Beat** | `langgenius/dify-api:1.12.1` | - | Periodic task scheduler (Celery Beat) |
-| **Sandbox** | `langgenius/dify-sandbox:0.2.12` | 8194 | Secure code execution environment |
-| **Plugin Daemon** | `langgenius/dify-plugin-daemon:0.5.3-local` | 5002, 5003 | Plugin management and execution |
+| **API** | `langgenius/dify-api:1.14.2` | 5001 | RESTful API server, business logic processing |
+| **Web** | `langgenius/dify-web:1.14.2` | 3000 | Web UI frontend |
+| **Worker** | `langgenius/dify-api:1.14.2` | - | Background task processing (Celery) |
+| **Beat** | `langgenius/dify-api:1.14.2` | - | Periodic task scheduler (Celery Beat) |
+| **Sandbox** | `langgenius/dify-sandbox:0.2.15` | 8194 | Secure code execution environment |
+| **Plugin Daemon** | `langgenius/dify-plugin-daemon:0.6.1-local` | 5002, 5003 | Plugin management and execution |
 | **SSRF Proxy** | `ubuntu/squid:latest` | 3128 | External request security proxy |
 | **Nginx Proxy** | `nginx:latest` | 80 | Reverse proxy, load balancing |
 

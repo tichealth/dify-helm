@@ -23,21 +23,12 @@ FILES_URL: {{ .Values.global.filesDomain | quote }}
 # used to display trigger endpoint API Base URL to the front-end.
 # Example: https://api.dify.ai
 TRIGGER_URL: {{ .Values.global.triggerDomain | quote }}
-{{- if .Values.agentbox.enabled }}
-CLI_API_URL: "http://{{ include "dify.api.fullname" . }}:{{ .Values.api.service.port }}"
-{{- if .Values.global.filesDomain }}
-# Workaround for skill configuration failure in dify-1.14.0-rc1
-FILES_API_URL: {{ .Values.global.filesDomain | quote }}
-{{- else }}
-FILES_API_URL: "http://{{ include "dify.api.fullname" . }}:{{ .Values.api.service.port }}"
-{{- end }}
-{{- end }}
 {{- end }}
 
 {{- define "dify.api.config" -}}
 # Startup mode, 'api' starts the API server.
 MODE: api
-{{- include "dify.common.config" . }}
+{{ include "dify.common.config" . }}
 # A secret key that is used for securely signing the session cookie and encrypting sensitive information on the database. You can generate a strong key using `openssl rand -base64 42`.
 # SECRET_KEY: {{ .Values.global.appSecretKey }}
 
@@ -125,7 +116,7 @@ MODE: worker
 # The Celery worker for processing the queue.
 
 # --- All the configurations below are the same as those in the 'api' service. ---
-{{- include "dify.common.config" . }}
+{{ include "dify.common.config" . }}
 # A secret key that is used for securely signing the session cookie and encrypting sensitive information on the database. You can generate a strong key using `openssl rand -base64 42`.
 # same as the API service
 # SECRET_KEY: {{ .Values.global.appSecretKey }}
@@ -534,14 +525,6 @@ SANDBOX_PORT: '8194'
 HTTP_PROXY: http://{{ template "dify.ssrfProxy.fullname" .}}:{{ .Values.ssrfProxy.service.port }}
 HTTPS_PROXY: http://{{ template "dify.ssrfProxy.fullname" .}}:{{ .Values.ssrfProxy.service.port }}
 {{- end }}
-{{- end }}
-
-{{- define "dify.agentbox.config" -}}
-AGENTBOX_SSH_USERNAME: {{ .Values.agentbox.auth.username | quote }}
-# AGENTBOX_SSH_PASSWORD: {{ .Values.agentbox.auth.password | quote }}
-AGENTBOX_SSH_PORT: "2222"
-AGENTBOX_SOCAT_TARGET_HOST: {{ (include "dify.api.fullname" .) | quote }}
-AGENTBOX_SOCAT_TARGET_PORT: {{ (.Values.api.service.port | toString) | quote }}
 {{- end }}
 
 {{- define "dify.nginx.config.proxy" }}
