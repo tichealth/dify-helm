@@ -309,6 +309,19 @@ else
         *)      INGRESS_HOST="${PROJECT_NAME}.tichealth.com.au" ;;
     esac
 fi
+
+# Production overlay: layer values-prod.yaml on top of the base values for any
+# prod environment (lite-prod / prod-full, both -> dify-prod host). Keyed on the
+# resolved INGRESS_HOST because PROJECT_NAME is not parsed when DIFY_INGRESS_HOST
+# is set (as it always is in CI). Appended AFTER the base -f so the overlay wins.
+case "$INGRESS_HOST" in
+    *prod*)
+        if [[ -f "$SCRIPT_DIR/values-prod.yaml" ]]; then
+            DIFY_ARGS+=( -f "$SCRIPT_DIR/values-prod.yaml" )
+            echo "Applying production overlay: values-prod.yaml"
+        fi
+        ;;
+esac
 BASE_URL="https://$INGRESS_HOST"
 DIFY_ARGS+=(
     --set "ingress.hosts[0].host=$INGRESS_HOST"
