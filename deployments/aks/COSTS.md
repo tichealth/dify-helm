@@ -1,4 +1,7 @@
-# Infracost Usage
+# Cost estimates
+
+Current pricing comes from Infracost run against the tracked Terraform profiles.
+Dated figures in older notes are not a deployment decision.
 
 Location: `dify-helm/deployments/aks`
 

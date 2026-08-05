@@ -1,4 +1,4 @@
-# Operations: Endpoints and Keys
+# Endpoints and keys
 
 How to get the main endpoints and secrets used by the deployment.
 
@@ -14,7 +14,7 @@ terraform output postgresql_fqdn
 terraform output postgresql_connection_string   # connection string without password
 ```
 
-**Other ways:** Azure Portal â†’ Azure Database for PostgreSQL flexible servers â†’ your server â†’ Overview (Server name). Or Azure CLI: `az postgres flexible-server list --query "[].{Name:name, FQDN:fullyQualifiedDomainName}" -o table`.
+**Other ways:** Azure Portal GåÆ Azure Database for PostgreSQL flexible servers GåÆ your server GåÆ Overview (Server name). Or Azure CLI: `az postgres flexible-server list --query "[].{Name:name, FQDN:fullyQualifiedDomainName}" -o table`.
 
 ---
 
@@ -40,7 +40,7 @@ The Azure Storage key is used by the Terraform backend. Dify file storage uses
 Azure File PVCs; Blob variables are not currently wired to the application.
 **Do not commit the key.**
 
-**Azure Portal:** Storage accounts â†’ your account â†’ Access keys â†’ Show â†’ Copy (key1 or key2).
+**Azure Portal:** Storage accounts GåÆ your account GåÆ Access keys GåÆ Show GåÆ Copy (key1 or key2).
 
 **Azure CLI:**
 
@@ -59,4 +59,4 @@ az storage container create --name tfstate --account-name <name> --auth-mode log
 ```
 
 Use the key only in ignored backend configuration or GitHub Secrets (see
-[GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md)); never commit it.
+[GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md)); never commit it.

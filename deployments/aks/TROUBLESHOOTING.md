@@ -6,7 +6,7 @@ When `./deploy.sh` hangs on Helm, fails with **context deadline exceeded**, or p
 
 ## 0. Azure PostgreSQL firewall (Helm times out / pods never Ready)
 
-If **`postgres_open_firewall_all = false`**, the Postgres firewall has no allow rules and Dify pods in AKS cannot connect â†’ Helm times out (**context deadline exceeded**). **Fix:** set **`postgres_open_firewall_all = true`** in your environment tfvars (e.g. lite-prod) so Terraform creates the allow-all rule. For locked-down prod, add rules in Azure Portal and keep `false`.
+If **`postgres_open_firewall_all = false`**, the Postgres firewall has no allow rules and Dify pods in AKS cannot connect GåÆ Helm times out (**context deadline exceeded**). **Fix:** set **`postgres_open_firewall_all = true`** in your environment tfvars (e.g. lite-prod) so Terraform creates the allow-all rule. For locked-down prod, add rules in Azure Portal and keep `false`.
 
 ---
 
@@ -28,7 +28,7 @@ sleep 5
 
 ## 2. Fix DNS (Private DNS Zone link to AKS)
 
-Pods can't resolve `*.<project>-pg-*.privatelink.postgres.database.azure.com` (NXDOMAIN). Usually the Private DNS Zone link to the AKS VNet is wrong or Terraformâ€™s data source didnâ€™t find the VNet yet.
+Pods can't resolve `*.<project>-pg-*.privatelink.postgres.database.azure.com` (NXDOMAIN). Usually the Private DNS Zone link to the AKS VNet is wrong or TerraformGÇÖs data source didnGÇÖt find the VNet yet.
 
 **Recommended sequence:**
 

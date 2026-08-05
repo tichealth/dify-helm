@@ -1,8 +1,8 @@
-# Teardown and Redeploy Guide
+# Teardown and redeploy
 
 Complete guide to tear down and redeploy the Dify AKS deployment from scratch.
 
-## ‚ö†Ô∏è Warning
+## G‹·n+≈ Warning
 
 This will **DELETE** all resources:
 - AKS cluster

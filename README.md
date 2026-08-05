@@ -33,11 +33,11 @@ unreviewed state. For the new UAT environment:
 
 ```bash
 cd deployments/aks
-# Follow UAT_RUNBOOK.md and use the gated GitHub Actions workflow.
+# Follow DEPLOY_UAT.md and use the gated GitHub Actions workflow.
 ```
 
 See [deployments/aks/README.md](deployments/aks/README.md) for the task index and
-[deployments/aks/UAT_RUNBOOK.md](deployments/aks/UAT_RUNBOOK.md) for UAT.
+[deployments/aks/DEPLOY_UAT.md](deployments/aks/DEPLOY_UAT.md) for UAT.
 
 ## Network Architecture
 

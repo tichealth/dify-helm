@@ -30,7 +30,7 @@ variable "kubernetes_version" {
   description = <<-EOT
     Target AKS Kubernetes version (minor like "1.35" or exact patch).
     Applied on cluster creation only. Post-create upgrades are manual (`az aks upgrade`);
-    Terraform ignores drift on this attribute — see AKS_KUBERNETES_UPGRADE.md.
+    Terraform ignores drift on this attribute — see UPGRADE_KUBERNETES.md.
   EOT
   type        = string
   default     = null

@@ -76,10 +76,11 @@ For truly minimal HTTP downtime on a 1-node cluster, scale ingress-nginx to 2
 replicas before the upgrade — the replicas will land on the surge node while the
 old node is draining. This does not help singletons like Redis.
 
-## Cert-manager (do this once, before the first K8s hop)
+## Cert-manager
 
-Dev/Prod are still on `cert-manager v1.13.3` (EOL). Upgrade it one minor at a
-time. Dev first, then Prod. UAT installs `v1.21.1` directly.
+Do this **once, before the first Kubernetes hop.** Dev/Prod are still on
+`cert-manager v1.13.3` (EOL). Upgrade it one minor at a time, Dev first, then
+Prod. UAT installs `v1.21.1` directly.
 
 ```bash
 kubectl get certificates,certificaterequests,issuers -A -o yaml > cm-ns-backup.yaml

@@ -10,7 +10,7 @@ resource_group_name = ""
 
 # AKS - intentionally small and stable: one on-demand node, no Spot pool.
 # kubernetes_version is applied only when the cluster is first created; ongoing
-# upgrades are manual via `az aks upgrade` (see AKS_KUBERNETES_UPGRADE.md).
+# upgrades are manual via `az aks upgrade` (see UPGRADE_KUBERNETES.md).
 node_count            = 1
 vm_size               = "Standard_D2s_v5"
 kubernetes_version    = "1.35"

@@ -1,6 +1,6 @@
 # Full production - 3 nodes, larger DB.
 # Use when you want node-level HA and room to scale out.
-# See PROD_DEPLOY.md for cost and scalability notes; INFRACOST.md for pricing.
+# See DEPLOY_PROD.md for cost and scalability notes; COSTS.md for pricing.
 #
 # Secrets (passwords, keys) are NOT in this file. Set them via:
 # - GitHub Actions: workflow passes TF_VAR_* from GitHub Secrets.
@@ -14,7 +14,7 @@ resource_group_name = "rg-cme-prod"
 # AKS - 3 nodes for resilience.
 # kubernetes_version is applied only at cluster creation; Terraform ignores
 # post-create drift, so manual `az aks upgrade` hops are the source of truth
-# (see AKS_KUBERNETES_UPGRADE.md).
+# (see UPGRADE_KUBERNETES.md).
 node_count            = 3
 vm_size               = "Standard_D4s_v5"
 kubernetes_version    = "1.35"

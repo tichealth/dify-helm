@@ -1,4 +1,4 @@
-# UAT Environment Runbook
+# Deploy UAT
 
 **Status:** Authoritative instructions for creating and operating Dify UAT on AKS.  
 **Last verified:** 2026-08-03 against the Azure subscription and this repository.  
@@ -38,39 +38,89 @@ perform an explicit state/data migration. Never point UAT at Dev or Prod state.
 This profile is production-like in topology and configuration, not availability.
 One node means expected downtime during node maintenance and no node-level HA.
 
-## What must exist before the first run
+## Prerequisites
 
-1. **Azure access and quota**
-   - The service principal can create resource groups, AKS, networking, PostgreSQL,
-     disks, file shares, and public IPs in the target subscription.
-   - Australia East has quota for the D2s_v5 node plus one temporary surge node
-     during a manual upgrade.
-2. **A Terraform backend storage account**
-   - Create or select a UAT-only storage account.
-   - Create a private `tfstate` container. The workflow uses the key
-     `uat.terraform.tfstate`.
-   - The application does **not** currently use this account for Dify file storage;
-     application files remain on AKS PVCs.
-3. **A GitHub Environment named `uat`**
-   - Add required reviewers for the apply gate.
-   - Do not copy Dev or Prod application/database keys; generate UAT-only values.
-4. **DNS control** for `tichealth.com.au`.
-5. **A UAT owner and test window**, including who will approve the first apply and
-   who will complete Dify application configuration.
+- **Azure access and quota** — the service principal can create resource groups,
+  AKS, networking, PostgreSQL, disks, file shares, and public IPs. Australia East
+  has quota for the D2s_v5 node plus one temporary surge node during upgrades.
+- **DNS control** for `tichealth.com.au`.
+- **A UAT owner and test window** — who approves the first apply, and who
+  completes the Dify application configuration afterwards.
 
-## GitHub Environment configuration
+## Setting up UAT from scratch
 
-Configure the common variables, secrets, backend, and approval gate once using
-[GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md). For UAT, all application
-keys must be newly generated; `PLUGIN_DAEMON_SERVER_KEY` and
-`PLUGIN_DAEMON_DIFY_API_KEY` are also mandatory. Generate them with:
+Six steps, roughly 30 minutes of setup plus ~25 minutes of apply time. Steps 1-3
+are one-time; step 4 onward is the deploy itself.
+
+### 1. Create the Terraform backend (one-time)
+
+Terraform creates the UAT application resource group itself. This RG is separate
+and holds **only** the state file.
 
 ```bash
+BACKEND_RG=rg-dify-tfstate-uat
+SA=stdifytfstateuat          # 3-24 chars, lowercase alphanumeric, globally unique
+LOCATION=australiaeast
+
+az login
+az account set --subscription "<SUBSCRIPTION_ID>"
+
+az group create --name "$BACKEND_RG" --location "$LOCATION"
+
+az storage account create --name "$SA" --resource-group "$BACKEND_RG" \
+  --location "$LOCATION" --sku Standard_LRS --kind StorageV2 \
+  --min-tls-version TLS1_2 --allow-blob-public-access false
+
+az storage container create --name tfstate --account-name "$SA" --auth-mode login
+
+# Save this - it becomes AZURE_BLOB_ACCOUNT_KEY
+az storage account keys list -g "$BACKEND_RG" -n "$SA" --query '[0].value' -o tsv
+```
+
+### 2. Generate UAT application secrets (one-time)
+
+```bash
+cd deployments/aks
 bash scripts/generate-secrets.sh
 ```
 
-Store the output only in the GitHub Environment named `uat` or approved secret
-storage. Do not add it to the tracked UAT profile.
+Keep the output open for step 3. Use **new** values — never copy Dev or Prod keys.
+
+### 3. Create the GitHub Environment `uat` (one-time)
+
+**Settings → Environments → New environment → `uat`**, add required reviewers,
+then add:
+
+| Kind | Name | Value from |
+| --- | --- | --- |
+| Secret | `AZURE_CREDENTIALS` | Service-principal JSON ([shape](./GITHUB_ACTIONS.md#a-azure-service-principal-azure_credentials)) |
+| Secret | `AZURE_BLOB_ACCOUNT_KEY` | Step 1 output |
+| Secret | `DIFY_SECRET_KEY` | Step 2 output |
+| Secret | `POSTGRESQL_PASSWORD` | Step 2 output |
+| Secret | `REDIS_PASSWORD` | Step 2 output |
+| Secret | `QDRANT_API_KEY` | Step 2 output |
+| Secret | `PLUGIN_DAEMON_SERVER_KEY` | Step 2 output |
+| Secret | `PLUGIN_DAEMON_DIFY_API_KEY` | Step 2 output |
+| Variable | `AZURE_BLOB_ACCOUNT_NAME` | `$SA` from step 1 |
+| Variable | `BACKEND_RESOURCE_GROUP` | `$BACKEND_RG` from step 1 |
+| Variable | `PHOENIX_OTLP_ENDPOINT` | Optional; omit to disable tracing |
+
+Do **not** add `ARM_CLIENT_ID`, `ARM_TENANT_ID`, or `ARM_SUBSCRIPTION_ID` — the
+workflow derives them from `AZURE_CREDENTIALS`.
+
+### 4. Deploy
+
+Follow [First deployment](#first-deployment) below.
+
+### 5. Point DNS at the ingress
+
+Create the A record from the LoadBalancer IP the workflow prints, then wait for
+cert-manager to issue the certificate.
+
+### 6. Bootstrap the application
+
+Follow [Application bootstrap](#application-bootstrap) — admin account, model
+providers, workflow imports, API keys.
 
 ## First deployment
 
@@ -156,9 +206,9 @@ Complete these explicitly:
 - The old managed-Corefile replacement is retired. UAT uses the supported
   `coredns-custom` ConfigMap for Azure PostgreSQL DNS forwarding.
 
-## Related current runbooks
+## Related runbooks
 
-- [AKS_KUBERNETES_UPGRADE.md](./AKS_KUBERNETES_UPGRADE.md) - Dev/UAT/Prod cluster upgrade rings.
-- [GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md) - CI secret details.
-- [OPERATIONS.md](./OPERATIONS.md) - Routine endpoint and infrastructure queries.
+- [GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md) - Full CI setup: environments, secrets, backend, approvals.
+- [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md) - Dev/UAT/Prod cluster upgrade rings.
+- [ENDPOINTS_AND_KEYS.md](./ENDPOINTS_AND_KEYS.md) - Look up endpoints, FQDNs, and keys.
 - [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - Deployment troubleshooting.

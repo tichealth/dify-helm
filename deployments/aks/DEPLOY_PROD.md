@@ -11,14 +11,14 @@ backend key `prod.terraform.tfstate`.
 | `environments/lite-prod.tfvars` | 1 x D4s_v5; PG16 B1ms / 32 GiB | Current cost-optimized, non-HA Prod |
 | `environments/prod-full.tfvars` | 3 x D4s_v5; PG16 GP D2ds_v5 / 128 GiB | Node-level resilience and more headroom |
 
-Use [INFRACOST.md](./INFRACOST.md) for current pricing; dated estimates are not a
+Use [COSTS.md](./COSTS.md) for current pricing; dated estimates are not a
 deployment decision. Moving between these profiles changes the same live state,
 so review the Terraform plan for replacement, storage, and quota implications.
 
 ## Preferred GitHub deployment
 
 1. Configure the `prod` GitHub Environment using
-   [GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md), with required reviewers.
+   [GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md), with required reviewers.
 2. Run **Deploy or teardown Dify on AKS** with:
    - `enabled`: checked
    - `action`: `deploy`
@@ -30,7 +30,7 @@ so review the Terraform plan for replacement, storage, and quota implications.
 4. Approve apply and validate the checklist below.
 
 Kubernetes version upgrades are a separate manual change; follow
-[AKS_KUBERNETES_UPGRADE.md](./AKS_KUBERNETES_UPGRADE.md).
+[UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md).
 
 ## Local equivalent
 
@@ -38,7 +38,7 @@ Kubernetes version upgrades are a separate manual change; follow
 cd deployments/aks
 cp environments/lite-prod.tfvars terraform.tfvars  # or prod-full.tfvars
 # Configure backend.azurerm.tfvars with key = prod.terraform.tfstate.
-# Export the required TF_VAR_* values from GITHUB_ACTIONS_SECRETS.md.
+# Export the required TF_VAR_* values from GITHUB_ACTIONS.md.
 az login
 az account set --subscription "<SUBSCRIPTION_ID>"
 ./deploy.sh --all --auto-approve

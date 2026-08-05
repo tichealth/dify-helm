@@ -7,18 +7,19 @@ releases. This page is the documentation entry point for the AKS deployment.
 
 | Task | Document |
 | --- | --- |
-| Create UAT | [UAT_RUNBOOK.md](./UAT_RUNBOOK.md) |
-| Deploy or resize Prod | [PROD_DEPLOY.md](./PROD_DEPLOY.md) |
-| Configure GitHub environments and secrets | [GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md) |
-| Upgrade Kubernetes manually | [AKS_KUBERNETES_UPGRADE.md](./AKS_KUBERNETES_UPGRADE.md) |
-| Operate or troubleshoot | [OPERATIONS.md](./OPERATIONS.md) and [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) |
-| Upgrade Dify (application) | [UPGRADE_GUIDE.md](./UPGRADE_GUIDE.md) |
+| Stand up UAT from scratch | [DEPLOY_UAT.md](./DEPLOY_UAT.md) |
+| Deploy or resize Prod | [DEPLOY_PROD.md](./DEPLOY_PROD.md) |
+| Configure GitHub Environments, secrets, and the workflow | [GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md) |
+| Upgrade the Kubernetes cluster | [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md) |
+| Upgrade the Dify application | [UPGRADE_DIFY.md](./UPGRADE_DIFY.md) |
+| Find endpoints, FQDNs, and keys | [ENDPOINTS_AND_KEYS.md](./ENDPOINTS_AND_KEYS.md) |
+| Diagnose a failed or stuck deploy | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) |
 | Review topology | [ARCHITECTURE.md](./ARCHITECTURE.md) |
-| Estimate current cost | [INFRACOST.md](./INFRACOST.md) |
-| Destroy an environment | [TEARDOWN_AND_REDEPLOY.md](./TEARDOWN_AND_REDEPLOY.md) |
-| Harden prod PostgreSQL | [RUNBOOK-prod-pg-hardening.md](./RUNBOOK-prod-pg-hardening.md) |
+| Estimate current cost | [COSTS.md](./COSTS.md) |
+| Destroy and rebuild an environment | [TEARDOWN.md](./TEARDOWN.md) |
+| Lock down prod PostgreSQL (TLS + firewall) | [HARDEN_PROD_POSTGRES.md](./HARDEN_PROD_POSTGRES.md) |
+| Keep credentials out of git | [SECRETS.md](./SECRETS.md) |
 | Open follow-ups (security + infra) | [TODO.md](./TODO.md) |
-| Secret handling guardrails | [SECRETS.md](./SECRETS.md) |
 
 Terraform (`environments/*.tfvars`, `main.tf`, `modules/`) and Helm
 (`values.yaml`, `values-*.yaml`, `deploy.sh`) are the source of truth. The
@@ -41,7 +42,7 @@ Dev or Prod state key.
 GitHub Actions is the preferred path: run **Deploy or teardown Dify on AKS**,
 select the environment and mode, review the plan, then approve apply. Configure
 the GitHub Environment first using
-[GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md).
+[GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md).
 
 For a local run:
 
@@ -74,7 +75,7 @@ deploy mode—use the manual CLI runbook.
 - AKS Kubernetes version is pinned per env (`kubernetes_version` in
   `environments/*.tfvars`) but only applied at cluster creation — Terraform
   ignores post-create drift. Ongoing upgrades are manual via `az aks upgrade`
-  (see [AKS_KUBERNETES_UPGRADE.md](./AKS_KUBERNETES_UPGRADE.md)).
+  (see [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md)).
 - HTTPS is issued by cert-manager (Let's Encrypt) via ingress-nginx once a DNS A
   record points at the LoadBalancer IP. No separate setup guide is required.
 - `coredns-custom.yaml` is the supported AKS customization for PostgreSQL DNS;
@@ -90,4 +91,4 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller
 ```
 
 For UAT, continue through the acceptance checklist in
-[UAT_RUNBOOK.md](./UAT_RUNBOOK.md).
+[DEPLOY_UAT.md](./DEPLOY_UAT.md).

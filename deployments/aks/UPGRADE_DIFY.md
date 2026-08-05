@@ -1,4 +1,4 @@
-# Dify Upgrade Guide for AKS Deployment
+# Upgrade Dify (application)
 
 This guide documents how to upgrade Dify on AKS, ensuring compatibility with the official docker-compose.yaml configuration.
 
@@ -215,4 +215,4 @@ When upgrading, verify these match `dify/docker/docker-compose.yaml`:
 ## Related Documentation
 
 - [README.md](./README.md) - Task index (HTTPS is issued automatically by cert-manager once DNS points at the ingress IP)
-- [INFRACOST.md](./INFRACOST.md) - Live cost estimates from Terraform
+- [COSTS.md](./COSTS.md) - Live cost estimates from Terraform

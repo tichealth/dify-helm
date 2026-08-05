@@ -15,7 +15,7 @@ no VNet injection. Only the `difyadmin` password separates the internet from the
       for 24h with no `SSL connection has been closed unexpectedly` errors, then
       flip the same in `environments/lite-prod.tfvars` (or `prod-full.tfvars`).
       Manual fallback: `az postgres flexible-server parameter set --name require_secure_transport --value on` (needs pod restart).
-      Follow [RUNBOOK-prod-pg-hardening.md](./RUNBOOK-prod-pg-hardening.md).
+      Follow [HARDEN_PROD_POSTGRES.md](./HARDEN_PROD_POSTGRES.md).
 - [ ] **P1 — Restrict firewall to AKS outbound IPs.** Remove `allow-all-ipv4`;
       add rules for each IP returned by
       `az aks show ... --query 'networkProfile.loadBalancerProfile.effectiveOutboundIPs[].id'`.
@@ -37,10 +37,10 @@ no VNet injection. Only the `difyadmin` password separates the internet from the
       to Blob, or remove the unused Blob vars.
 - [ ] **Cert-manager upgrade for Dev/Prod.** Currently on EOL `v1.13.3`. UAT
       installs `v1.21.1` directly. Step Dev then Prod through minors — see
-      [AKS_KUBERNETES_UPGRADE.md](./AKS_KUBERNETES_UPGRADE.md#cert-manager).
+      [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md#cert-manager).
 - [ ] **AKS K8s upgrade to 1.35.** Both Dev (1.33.6) and Prod (1.33.7) need
       `1.33 → 1.34 → 1.35`, one minor at a time. Runbook in
-      [AKS_KUBERNETES_UPGRADE.md](./AKS_KUBERNETES_UPGRADE.md).
+      [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md).
 - [ ] **Qdrant migration for Dev/Prod.** Existing Dev/Prod values reference the
       `dify-qdrant` service but have no Qdrant Helm release. UAT is the first env
       with automated Qdrant. Decide: fresh index vs. export/import from wherever
@@ -56,7 +56,7 @@ no VNet injection. Only the `difyadmin` password separates the internet from the
 - [ ] **Dify application config bootstrap** on first deploy: admin account,
       model providers, workflow DSL import, UAT API keys, downstream
       `cme-webapp-api` `DIFY_HTTP_ENDPOINT_URL` update, sanitized test data,
-      optional Phoenix/OTLP wiring. See [UAT_RUNBOOK.md](./UAT_RUNBOOK.md#application-bootstrap).
+      optional Phoenix/OTLP wiring. See [DEPLOY_UAT.md](./DEPLOY_UAT.md#application-bootstrap).
 
 ## Related files
 

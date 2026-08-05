@@ -2,7 +2,7 @@ name: Deploy or teardown Dify on AKS
 
 # Two-job flow: plan -> (Environment approval) -> apply.
 # Required reviewers must be configured on the GitHub Environment (`dev`/`uat`/`prod`)
-# for the apply gate to actually pause. See deployments/aks/GITHUB_ACTIONS_SECRETS.md.
+# for the apply gate to actually pause. See deployments/aks/GITHUB_ACTIONS.md.
 
 on:
   workflow_dispatch:
