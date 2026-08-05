@@ -6,9 +6,13 @@ project_name        = "dify"
 location            = "australiaeast"
 resource_group_name = "" # terraform-managed RG: dify-rg-9764
 
-# AKS - vm_size must match the live node pool (avoid replace-on-apply)
+# AKS - vm_size must match the live node pool (avoid replace-on-apply).
+# kubernetes_version is applied only at cluster creation; Terraform ignores
+# post-create drift, so manual `az aks upgrade` hops are the source of truth
+# (see AKS_KUBERNETES_UPGRADE.md). Bump this pin after Dev is manually upgraded.
 node_count            = 1
 vm_size               = "Standard_D2s_v5"
+kubernetes_version    = "1.35"
 enable_spot_node_pool = false
 
 # Dify blob container name (account/key from TF_VAR_* in CI)

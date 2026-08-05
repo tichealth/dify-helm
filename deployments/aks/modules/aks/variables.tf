@@ -30,6 +30,17 @@ variable "vm_size" {
   description = "Node VM size"
 }
 
+variable "kubernetes_version" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    Target Kubernetes minor (e.g. "1.35") or exact patch (e.g. "1.35.9").
+    Applied only at cluster creation; ongoing upgrades are manual via `az aks upgrade`
+    (see AKS_KUBERNETES_UPGRADE.md). Terraform ignores post-create version changes
+    so out-of-band upgrades never cause drift.
+  EOT
+}
+
 variable "enable_spot_node_pool" {
   type        = bool
   default     = false

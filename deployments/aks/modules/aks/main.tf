@@ -4,10 +4,14 @@ resource "azurerm_kubernetes_cluster" "aks" {
   resource_group_name = var.resource_group_name
   dns_prefix          = "${var.name_prefix}-${var.suffix_hex}"
 
+  # Set at creation only. Manual `az aks upgrade` drives ongoing changes.
+  kubernetes_version = var.kubernetes_version
+
   default_node_pool {
     name                        = "system"
     node_count                  = var.node_count
     vm_size                     = var.vm_size
+    orchestrator_version        = var.kubernetes_version
     temporary_name_for_rotation = "systemtemp"
   }
 
@@ -16,6 +20,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      kubernetes_version,
+      default_node_pool[0].orchestrator_version,
+    ]
+  }
 }
 
 resource "azurerm_kubernetes_cluster_node_pool" "spot" {

@@ -178,6 +178,7 @@ resource "azurerm_postgresql_flexible_server" "pg" {
   sku_name                      = var.postgres_sku_name
   storage_mb                    = var.postgres_storage_mb
   storage_tier                  = var.postgres_storage_tier
+  backup_retention_days         = var.postgres_backup_retention_days
   public_network_access_enabled = local.postgres_public_access
 
   delegated_subnet_id = var.create_vnet_for_postgres ? azurerm_subnet.postgres[0].id : null

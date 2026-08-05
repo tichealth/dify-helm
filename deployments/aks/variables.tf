@@ -26,9 +26,19 @@ variable "vm_size" {
   default     = "Standard_D4s_v5"
 }
 
+variable "kubernetes_version" {
+  description = <<-EOT
+    Target AKS Kubernetes version (minor like "1.35" or exact patch).
+    Applied on cluster creation only. Post-create upgrades are manual (`az aks upgrade`);
+    Terraform ignores drift on this attribute — see AKS_KUBERNETES_UPGRADE.md.
+  EOT
+  type        = string
+  default     = null
+}
+
 # Optional Spot node pool (recommended for non-prod)
 variable "enable_spot_node_pool" {
-  description = "Whether to create a Spot node pool (test/dev)."
+  description = "Whether to create a Spot node pool for a non-production environment."
   type        = bool
   default     = false
 }
@@ -162,6 +172,17 @@ variable "postgres_storage_tier" {
   description = "Azure PostgreSQL storage performance tier (e.g. P4, P6, P10, P15, P20, P30). Leave null for Azure default based on storage_mb."
   type        = string
   default     = null
+}
+
+variable "postgres_backup_retention_days" {
+  description = "Point-in-time restore retention for Azure PostgreSQL Flexible Server, in days."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.postgres_backup_retention_days >= 7 && var.postgres_backup_retention_days <= 35
+    error_message = "postgres_backup_retention_days must be between 7 and 35."
+  }
 }
 
 variable "postgres_public_access" {

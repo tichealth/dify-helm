@@ -1,0 +1,44 @@
+# UAT overlay for Dify on AKS.
+#
+# UAT exercises the production service topology and PostgreSQL TLS behavior, but
+# stays within a single Standard_D2s_v5 node. It is not an HA environment.
+
+api:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "768Mi"
+    limits:
+      memory: "2Gi"
+  extraEnv:
+    - name: SERVER_WORKER_CLASS
+      value: "gevent"
+    - name: SERVER_WORKER_AMOUNT
+      value: "2"
+    - name: SERVER_WORKER_CONNECTIONS
+      value: "50"
+    - name: PGSSLMODE
+      value: "require"
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "384Mi"
+    limits:
+      memory: "1536Mi"
+  extraEnv:
+    - name: PGSSLMODE
+      value: "require"
+
+beat:
+  extraEnv:
+    - name: PGSSLMODE
+      value: "require"
+
+pluginDaemon:
+  extraEnv:
+    - name: DB_SSL_MODE
+      value: "require"

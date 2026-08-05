@@ -3,7 +3,7 @@ description: Shared setup for plan/apply jobs (Azure login, TF vars, kubectl/hel
 
 inputs:
   environment:
-    description: Logical environment input (dev/test/lite-prod/prod-full)
+    description: Logical environment input (dev/uat/lite-prod/prod-full)
     required: true
   azure_credentials:
     description: Azure SP JSON
@@ -22,6 +22,12 @@ inputs:
     required: true
   qdrant_api_key:
     required: true
+  plugin_daemon_server_key:
+    required: false
+    default: ''
+  plugin_daemon_dify_api_key:
+    required: false
+    default: ''
   phoenix_otlp_endpoint:
     required: false
     default: ''
@@ -41,6 +47,10 @@ runs:
         [ -n "${{ inputs.postgresql_password }}"    ] || { echo "Missing POSTGRESQL_PASSWORD"; exit 1; }
         [ -n "${{ inputs.redis_password }}"         ] || { echo "Missing REDIS_PASSWORD"; exit 1; }
         [ -n "${{ inputs.qdrant_api_key }}"         ] || { echo "Missing QDRANT_API_KEY"; exit 1; }
+        if [ "${{ inputs.environment }}" = "uat" ]; then
+          [ -n "${{ inputs.plugin_daemon_server_key }}"   ] || { echo "Missing PLUGIN_DAEMON_SERVER_KEY for UAT"; exit 1; }
+          [ -n "${{ inputs.plugin_daemon_dify_api_key }}" ] || { echo "Missing PLUGIN_DAEMON_DIFY_API_KEY for UAT"; exit 1; }
+        fi
 
     - name: Azure Login
       uses: azure/login@v2
@@ -64,12 +74,18 @@ runs:
         echo "TF_VAR_postgresql_password=${{ inputs.postgresql_password }}"             >> "$GITHUB_ENV"
         echo "TF_VAR_redis_password=${{ inputs.redis_password }}"                       >> "$GITHUB_ENV"
         echo "TF_VAR_qdrant_api_key=${{ inputs.qdrant_api_key }}"                       >> "$GITHUB_ENV"
+        echo "PLUGIN_DAEMON_SERVER_KEY=${{ inputs.plugin_daemon_server_key }}"          >> "$GITHUB_ENV"
+        echo "PLUGIN_DAEMON_DIFY_API_KEY=${{ inputs.plugin_daemon_dify_api_key }}"      >> "$GITHUB_ENV"
         echo "PHOENIX_OTLP_ENDPOINT=${{ inputs.phoenix_otlp_endpoint }}"                >> "$GITHUB_ENV"
 
         case "${{ inputs.environment }}" in
           lite-prod|prod-full) echo "DIFY_INGRESS_HOST=dify-prod.tichealth.com.au" >> "$GITHUB_ENV" ;;
           dev)                 echo "DIFY_INGRESS_HOST=dify-dev.tichealth.com.au"  >> "$GITHUB_ENV" ;;
-          test)                echo "DIFY_INGRESS_HOST=dify-test.tichealth.com.au" >> "$GITHUB_ENV" ;;
+          uat)
+            echo "DIFY_INGRESS_HOST=dify-uat.tichealth.com.au" >> "$GITHUB_ENV"
+            echo "CERT_MANAGER_VERSION=v1.21.1"               >> "$GITHUB_ENV"
+            echo "INSTALL_QDRANT=true"                         >> "$GITHUB_ENV"
+            ;;
           *)                   echo "DIFY_INGRESS_HOST=dify-${{ inputs.environment }}.tichealth.com.au" >> "$GITHUB_ENV" ;;
         esac
 

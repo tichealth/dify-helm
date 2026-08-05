@@ -40,6 +40,7 @@ module "aks" {
   location              = local.rg_location
   node_count            = var.node_count
   vm_size               = var.vm_size
+  kubernetes_version    = var.kubernetes_version
   enable_spot_node_pool = var.enable_spot_node_pool
   spot_node_pool_name   = var.spot_node_pool_name
   spot_vm_size          = var.spot_vm_size
@@ -77,6 +78,7 @@ module "postgres" {
   postgres_sku_name                 = var.postgres_sku_name
   postgres_storage_mb               = var.postgres_storage_mb
   postgres_storage_tier             = var.postgres_storage_tier
+  postgres_backup_retention_days    = var.postgres_backup_retention_days
   postgres_public_access            = var.postgres_public_access
   postgres_require_secure_transport = var.postgres_require_secure_transport
   postgres_open_firewall_all        = var.postgres_open_firewall_all

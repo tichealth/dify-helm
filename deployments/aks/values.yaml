@@ -28,11 +28,13 @@ image:
     pullPolicy: IfNotPresent
   proxy:
     repository: nginx
-    tag: latest
+    # Digest captured from the healthy dev release on 2026-08-03. Pinning keeps
+    # replacement AKS nodes from silently pulling a different `latest` image.
+    tag: "latest@sha256:ec4ed8b5299e5e90694af7750eb6dffd2627317d30544d056b0371f8082f7bce"
     pullPolicy: IfNotPresent
   ssrfProxy:
     repository: ubuntu/squid
-    tag: latest
+    tag: "latest@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029"
     pullPolicy: IfNotPresent
   pluginDaemon:
     repository: langgenius/dify-plugin-daemon
@@ -200,7 +202,7 @@ service:
 
 # Ingress Configuration - Enable and configure
 # Host is overridden by deploy.sh from project_name in terraform.tfvars:
-#   prod (lite or full) -> dify-prod.tichealth.com.au; dev -> dify-dev; test -> dify-test
+#   prod (lite or full) -> dify-prod; dev -> dify-dev; UAT -> dify-uat
 ingress:
   enabled: true
   className: "nginx"
@@ -216,7 +218,7 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "75"
   hosts:
-    - host: dify-dev.tichealth.com.au  # default; overridden by deploy.sh for prod/test
+    - host: dify-dev.tichealth.com.au  # default; overridden by deploy.sh for Prod/UAT
       paths:
         - path: /
           pathType: Prefix

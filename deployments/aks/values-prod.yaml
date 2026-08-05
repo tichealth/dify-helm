@@ -5,7 +5,7 @@
 # "*prod*" (i.e. lite-prod and prod-full). It only overrides what should differ
 # in production; everything else is inherited from values.yaml.
 #
-# Sizing rationale (see also LITE_PROD_VS_PROD.md):
+# Sizing rationale (see PROD_DEPLOY.md for profile choice, INFRACOST.md for pricing):
 #   - lite-prod : 1 x Standard_D4s_v5  = 4 vCPU / 16 GiB   (~3.8 vCPU / ~13 GiB allocatable)
 #   - prod-full : 3 x Standard_D4s_v5  = 12 vCPU / 48 GiB  (~11.5 vCPU / ~38 GiB allocatable)
 #

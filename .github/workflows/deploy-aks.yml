@@ -1,7 +1,7 @@
 name: Deploy or teardown Dify on AKS
 
 # Two-job flow: plan -> (Environment approval) -> apply.
-# Required reviewers must be configured on the GitHub Environment (`dev`/`test`/`prod`)
+# Required reviewers must be configured on the GitHub Environment (`dev`/`uat`/`prod`)
 # for the apply gate to actually pause. See deployments/aks/GITHUB_ACTIONS_SECRETS.md.
 
 on:
@@ -33,11 +33,15 @@ on:
         description: 'Environment (tfvars)'
         required: true
         type: choice
-        options: [dev, test, lite-prod, prod-full]
+        options: [dev, uat, lite-prod, prod-full]
         default: 'dev'
 
 env:
   TF_DIR: deployments/aks
+
+concurrency:
+  group: "dify-aks-${{ inputs.environment }}"
+  cancel-in-progress: false
 
 jobs:
   force-unlock:
@@ -64,6 +68,8 @@ jobs:
           postgresql_password: ${{ secrets.POSTGRESQL_PASSWORD }}
           redis_password: ${{ secrets.REDIS_PASSWORD }}
           qdrant_api_key: ${{ secrets.QDRANT_API_KEY }}
+          plugin_daemon_server_key: ${{ secrets.PLUGIN_DAEMON_SERVER_KEY }}
+          plugin_daemon_dify_api_key: ${{ secrets.PLUGIN_DAEMON_DIFY_API_KEY }}
           phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
 
       - name: Validate lock ID
@@ -120,6 +126,8 @@ jobs:
           postgresql_password: ${{ secrets.POSTGRESQL_PASSWORD }}
           redis_password: ${{ secrets.REDIS_PASSWORD }}
           qdrant_api_key: ${{ secrets.QDRANT_API_KEY }}
+          plugin_daemon_server_key: ${{ secrets.PLUGIN_DAEMON_SERVER_KEY }}
+          plugin_daemon_dify_api_key: ${{ secrets.PLUGIN_DAEMON_DIFY_API_KEY }}
           phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
 
       - name: Plan deploy
@@ -169,6 +177,8 @@ jobs:
           postgresql_password: ${{ secrets.POSTGRESQL_PASSWORD }}
           redis_password: ${{ secrets.REDIS_PASSWORD }}
           qdrant_api_key: ${{ secrets.QDRANT_API_KEY }}
+          plugin_daemon_server_key: ${{ secrets.PLUGIN_DAEMON_SERVER_KEY }}
+          plugin_daemon_dify_api_key: ${{ secrets.PLUGIN_DAEMON_DIFY_API_KEY }}
           phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
 
       - name: Download plan artifacts

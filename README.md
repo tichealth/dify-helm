@@ -28,13 +28,16 @@ A complete AKS deployment example is available in the `deployments/aks/` directo
 - Automated deployment script (`deploy.sh`)
 - Pre-configured Helm values for AKS
 
-To deploy on AKS:
+Start with the environment runbook rather than invoking the script against an
+unreviewed state. For the new UAT environment:
+
 ```bash
 cd deployments/aks
-./deploy.sh
+# Follow UAT_RUNBOOK.md and use the gated GitHub Actions workflow.
 ```
 
-See [deployments/aks/README.md](deployments/aks/README.md) for detailed instructions.
+See [deployments/aks/README.md](deployments/aks/README.md) for the task index and
+[deployments/aks/UAT_RUNBOOK.md](deployments/aks/UAT_RUNBOOK.md) for UAT.
 
 ## Network Architecture
 

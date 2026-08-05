@@ -1,6 +1,6 @@
-# Lite production - single node, lower cost (~250-350 AUD/mo estimated)
+# Lite production - single node, lower cost.
 # Use when you don't need active-active nodes; one node is enough.
-# See LITE_PROD_VS_PROD.md for cost and scalability notes.
+# See PROD_DEPLOY.md for cost and scalability notes; INFRACOST.md for pricing.
 #
 # Secrets (passwords, keys) are NOT in this file. Set them via:
 # - GitHub Actions: workflow passes TF_VAR_* from GitHub Secrets.
@@ -11,9 +11,13 @@ location     = "australiaeast"
 
 resource_group_name = "rg-cme-prod"
 
-# AKS - single node (no multi-node HA)
+# AKS - single node (no multi-node HA).
+# kubernetes_version is applied only at cluster creation; Terraform ignores
+# post-create drift, so manual `az aks upgrade` hops are the source of truth
+# (see AKS_KUBERNETES_UPGRADE.md). Bump this pin after Prod is manually upgraded.
 node_count            = 1
 vm_size               = "Standard_D4s_v5" # or Standard_D2s_v5 for lower cost
+kubernetes_version    = "1.35"
 enable_spot_node_pool = false
 
 # Azure Blob Storage (secrets via TF_VAR_* from GitHub Secrets in CI)
