@@ -26,15 +26,10 @@ infracost breakdown --config-file infracost.yml --out-file infracost-report.json
 
 ## Configuration
 
-The `infracost.yml` is self-contained and points to this directory:
-- **Dev**: Uses `terraform.tfvars` (git-ignored, contains actual values)
-- **Test/Prod**: Uses example files from `environments/*.tfvars.example`
+`infracost.yml` compares the tracked Dev, UAT, Lite Prod, and Full Prod profiles.
+Provide dummy values for any required secret Terraform variables; they do not
+affect the resource estimate. To estimate one profile only:
 
-For accurate test/prod estimates, create actual tfvars files:
 ```bash
-cp environments/test.tfvars.example environments/test.tfvars
-cp environments/prod.tfvars.example environments/prod.tfvars
-# Then fill in real values (these files should be git-ignored)
+infracost breakdown --path . --terraform-var-file environments/uat.tfvars
 ```
-
-Then update `infracost.yml` to use the actual files instead of `.example` files.

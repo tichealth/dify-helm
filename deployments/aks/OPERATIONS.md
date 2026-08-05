@@ -34,9 +34,11 @@ Use the `EXTERNAL-IP` column. Access Dify at `https://<your-domain>/apps` (once 
 
 ---
 
-## Azure Blob Storage account key
+## Terraform backend storage key
 
-Used for Dify file storage (and optionally Terraform state). **Do not commit the key.**
+The Azure Storage key is used by the Terraform backend. Dify file storage uses
+Azure File PVCs; Blob variables are not currently wired to the application.
+**Do not commit the key.**
 
 **Azure Portal:** Storage accounts → your account → Access keys → Show → Copy (key1 or key2).
 
@@ -49,11 +51,12 @@ az storage account keys list \
   --query "[0].value" -o tsv
 ```
 
-**Create storage account (if needed):**
+**Create backend storage (if needed):**
 
 ```bash
 az storage account create --name <name> --resource-group <rg> --location australiaeast --sku Standard_LRS --kind StorageV2
-az storage container create --name dify-data --account-name <name> --account-key <key>
+az storage container create --name tfstate --account-name <name> --auth-mode login
 ```
 
-Use the key only in local `terraform.tfvars` or GitHub Secrets (see [GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md)); never commit it.
+Use the key only in ignored backend configuration or GitHub Secrets (see
+[GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md)); never commit it.

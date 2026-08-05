@@ -1,273 +1,130 @@
-# GitHub Actions: Required Secrets and Variables
+# GitHub Actions configuration
 
-For the **Deploy or teardown Dify on AKS** workflow (`.github/workflows/deploy-aks.yml`), configure **Variables** and **Secrets** per **GitHub Environment** so each run uses the right credentials.
+This is the single reference for variables, secrets, state mapping, and approvals
+used by `.github/workflows/deploy-aks.yml`.
 
-**Use GitHub Environments (dev, test, prod):** Create three environments under **Settings → Environments**: `dev`, `test`, `prod`. In each environment, add the Variables and Secrets listed below (same names, different values per env). The workflow selects the environment from your run input: **dev** / **test** use the `dev` / `test` environment; **lite-prod** and **prod-full** both use the `prod` environment. That way dev, test, and prod each get their own Azure SP, storage account, and passwords.
+## Environment mapping
 
-**Where to add them:** Repo → **Settings** → **Environments** → choose `dev`, `test`, or `prod` → **Environment variables** and **Environment secrets**.
+Create GitHub Environments named `dev`, `uat`, and `prod` under **Settings ->
+Environments**. The workflow maps its input as follows:
 
-**Passwords and keys are not stored in the repo.** Environment tfvars do not contain secret values. The workflow passes them to Terraform as `TF_VAR_*` from the active environment’s Variables and Secrets.
+| Workflow input | GitHub Environment | Terraform profile | Backend key |
+| --- | --- | --- | --- |
+| `dev` | `dev` | `dev.tfvars` | `dev.terraform.tfstate` |
+| `uat` | `uat` | `uat.tfvars` | `uat.terraform.tfstate` |
+| `lite-prod` | `prod` | `lite-prod.tfvars` | `prod.terraform.tfstate` |
+| `prod-full` | `prod` | `prod-full.tfvars` | `prod.terraform.tfstate` |
 
-## Azure (service principal) — use one JSON secret
+`lite-prod` and `prod-full` deliberately describe the same Prod state at two
+sizes. UAT is isolated; never reuse a Dev or Prod backend key for it.
 
-The workflow uses **client-secret auth only** (no OIDC/federated credentials). Add a single **Environment secret** so login never falls back to OIDC:
+## Required configuration
 
-| Name | Description | Store as |
-|------|-------------|----------|
-| `AZURE_CREDENTIALS` | JSON with `clientId`, `clientSecret`, `tenantId`, `subscriptionId` | **Secret** |
+Add these to each GitHub Environment. Values must be unique per environment
+unless the row explicitly describes shared backend infrastructure.
 
-**Format (one line, no extra spaces):**
+| Name | Kind | Purpose |
+| --- | --- | --- |
+| `AZURE_CREDENTIALS` | Secret | Azure service-principal JSON |
+| `AZURE_BLOB_ACCOUNT_NAME` | Variable | Terraform backend storage account |
+| `BACKEND_RESOURCE_GROUP` | Variable | Resource group containing that account |
+| `AZURE_BLOB_ACCOUNT_KEY` | Secret | Terraform backend access key |
+| `DIFY_SECRET_KEY` | Secret | Dify signing/encryption key |
+| `POSTGRESQL_PASSWORD` | Secret | Azure PostgreSQL password |
+| `REDIS_PASSWORD` | Secret | In-cluster Redis password |
+| `QDRANT_API_KEY` | Secret | Dify vector-store key; also provisions UAT Qdrant |
+| `PLUGIN_DAEMON_SERVER_KEY` | Secret | Required for UAT; unique plugin server key |
+| `PLUGIN_DAEMON_DIFY_API_KEY` | Secret | Required for UAT; unique plugin-to-Dify key |
+| `PHOENIX_OTLP_ENDPOINT` | Variable | Optional OTLP HTTP base URL; omit to disable |
+
+`AZURE_CREDENTIALS` uses this exact shape:
 
 ```json
 {"clientId":"<APP_ID>","clientSecret":"<SECRET_VALUE>","tenantId":"<TENANT_ID>","subscriptionId":"<SUBSCRIPTION_ID>"}
 ```
 
-Create a service principal with Contributor (or appropriate) scope on the subscription or resource group used for Dify. [Azure: Create service principal](https://learn.microsoft.com/en-us/cli/azure/ad/sp/create-for-rbac).
-
-### Fix: "Failed to fetch federated token" or "Not all values are present"
-
-The workflow does **not** use OIDC. Ensure you have **one** secret `AZURE_CREDENTIALS` (not four separate vars/secrets). Do the following:
-
-1. **In GitHub:** Repo → **Settings** → **Environments** → select the environment (e.g. `prod`).
-2. **Environment secrets:** add `AZURE_CREDENTIALS` with the JSON above. Keys must be exactly: `clientId`, `clientSecret`, `tenantId`, `subscriptionId` (camelCase).
-3. **Get the values from Azure:**
-   - **Option A (Azure Portal):** Azure AD → App registrations → your app → Overview (Application ID = clientId, Directory ID = tenantId). Certificates & secrets → create a client secret, copy its **Value** = clientSecret. Subscriptions → copy subscription ID = subscriptionId.
-   - **Option B (Azure CLI):** See below.
-4. Re-run the workflow.
-
-**Create service principal (one-time)** — run locally with Azure CLI:
-
-```bash
-az login
-az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
-az ad sp create-for-rbac --name "dify-aks-github" --role Contributor --scopes /subscriptions/<YOUR_SUBSCRIPTION_ID>
-```
-
-From the JSON output: `appId` → clientId, `password` → clientSecret, `tenant` → tenantId. Add your subscription ID as subscriptionId. Build the JSON and paste as the **value** of secret `AZURE_CREDENTIALS`.
-
-**Checklist:** In each environment (dev, test, prod), one secret `AZURE_CREDENTIALS`; keys are camelCase; `clientSecret` is the secret **value** not the secret ID.
-
-## Terraform / Dify (passed as TF_VAR_*)
-
-The workflow sets these as Terraform environment variables from the **active GitHub Environment’s** Variables and Secrets; they are never written into tfvars. **deploy.sh** also reads these (TF_VAR_* or terraform.tfvars) and passes them to Helm so values.yaml has no real secrets. Add them in each environment (dev, test, prod) with values for that env.
-
-| Name | Purpose | Store as |
-|------|---------|----------|
-| `AZURE_BLOB_ACCOUNT_NAME` | Dify blob + Terraform backend storage account name | **Variable** |
-| `BACKEND_RESOURCE_GROUP` | Resource group where the storage account lives (for Terraform backend only) | **Variable** |
-| `AZURE_BLOB_ACCOUNT_KEY` | Dify blob + Terraform backend access key | **Secret** |
-| `DIFY_SECRET_KEY` | `TF_VAR_dify_secret_key` | **Secret** |
-| `POSTGRESQL_PASSWORD` | `TF_VAR_postgresql_password` | **Secret** |
-| `REDIS_PASSWORD` | `TF_VAR_redis_password` | **Secret** |
-| `QDRANT_API_KEY` | `TF_VAR_qdrant_api_key` → Helm `externalQdrant.apiKey` | **Secret** | deploy.sh → Helm |
-
-**values.yaml** contains only placeholders; real values come from GitHub Secrets (CI) or terraform.tfvars / TF_VAR_* (local). See [Secrets for local runs](#secrets-for-local-runs).
-
-## Observability (optional)
-
-OpenTelemetry export to a self-hosted Arize Phoenix is per-environment and **off by default**. Set the variable below in any environment that should ship traces; leave it absent (or empty) to keep OTEL disabled there.
-
-| Name | Purpose | Store as |
-|------|---------|----------|
-| `PHOENIX_OTLP_ENDPOINT` | Phoenix OTLP HTTP base URL (e.g. `https://phoenix-dev.tichealth.com.au`). When set, the workflow exports it; `deploy.sh` then passes `--set api.otel.enabled=true --set api.otel.baseEndpoint=$PHOENIX_OTLP_ENDPOINT` to Helm. When unset, `api.otel.enabled` stays `false`. | **Variable** |
-
-Suggested values:
-
-| Environment | Value |
-|---|---|
-| `dev` | `https://phoenix-dev.tichealth.com.au` |
-| `test` | (same as dev if you want test traces in dev Phoenix, else leave blank) |
-| `prod` | leave blank until a prod Phoenix exists, then set its public URL |
-
-Notes:
-- This produces generic OTEL spans (HTTP/DB/Celery) from `dify-api` and `dify-worker`. It is **independent** of the per-app Phoenix/Arize integration configured in the Dify UI, which is what produces LLM/chain/retriever spans with input/output.
-- Local runs: `export PHOENIX_OTLP_ENDPOINT=...` before `./deploy.sh` to mirror CI behaviour; `unset PHOENIX_OTLP_ENDPOINT` disables it again.
-
-### PostgreSQL firewall
-
-Use **`postgres_open_firewall_all = true`** in the environment tfvars used by CI (e.g. lite-prod) so AKS pods and the runner can reach Postgres. Otherwise Helm can time out. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#0-azure-postgresql-firewall-helm-times-out--pods-never-ready).
-
-### Set up AZURE_BLOB_ACCOUNT_NAME and AZURE_BLOB_ACCOUNT_KEY
-
-Terraform does **not** create the Storage Account. You need an existing Azure Storage account (any resource group in the same subscription).
-
-**Two different uses of Blob storage (same account, different containers):**
-
-| Purpose | Container | Used by |
-|--------|-----------|---------|
-| **Terraform state** | `tfstate` | Terraform remote backend (state file per environment). Does **not** hold Dify data. |
-| **Dify file storage** | e.g. `difydata` | Dify app only; set via `azure_blob_container_name` in tfvars. |
-
-**Remote backend is enabled:** Terraform state is stored in the **tfstate** container (same storage account as above). The workflow runs `terraform init -reconfigure` with backend config. You need a **Variable** `BACKEND_RESOURCE_GROUP` = the resource group where the storage account lives (e.g. `rg-cme-prod`). State file key: `dev` → `dev.terraform.tfstate`, `test` → `test.terraform.tfstate`, **lite-prod and prod-full** → **`prod.terraform.tfstate`**.
-
-**Why Dify needs a container:** Dify uses object storage for **application file storage** — user uploads (documents, images), dataset files, and generated assets. The API and worker pods need a shared, persistent place for these files. Without a blob container, Dify would use local pod disk, which is not shared across pods and is lost on restart. So you need a **separate** container from `tfstate`: one for Terraform state, one for Dify data.
-
-**Storage account name:** Use your storage account (e.g. `stcmedifyhelmprod`). Same key is used for both containers (tfstate and difydata).
-
-**Good practice:** One storage account per environment with two containers: `tfstate` (Terraform backend, optional) and `difydata` (Dify app). The workflow’s `AZURE_BLOB_*` and tfvars `azure_blob_container_name` refer to **Dify storage only** (not tfstate).
-
-**1. Create a Storage Account (if you don’t have one)**
-
-**Azure Portal:** Storage accounts → Create → subscription, resource group (e.g. `rg-cme-prod`), unique name (e.g. `stcmedifyhelmprod`), region, Standard_LRS → Create.
-
-**Azure CLI:**
+The identity needs permissions to manage the in-scope resource groups, AKS,
+networking, PostgreSQL, storage, and public IPs. Create one if needed:
 
 ```bash
 az login
 az account set --subscription "<SUBSCRIPTION_ID>"
-az storage account create \
-  --name "stcmedifyhelmprod" \
-  --resource-group "rg-cme-prod" \
-  --location "australiaeast" \
-  --sku Standard_LRS
+az ad sp create-for-rbac --name "dify-aks-github" --role Contributor \
+  --scopes "/subscriptions/<SUBSCRIPTION_ID>"
 ```
 
-**2. Create Blob containers**
+Use the returned `appId`, `password`, and `tenant` as `clientId`, `clientSecret`,
+and `tenantId`. Store the secret value, not its Azure object ID.
 
-Create at least the **Dify** container. Name is configurable in tfvars (`azure_blob_container_name`); env files use `difydata`.
-
-**Portal:** Storage account → Containers → + Container → e.g. `tfstate`, then `difydata` (or `dify-data` to match current tfvars).
-
-**CLI (e.g. both containers):**
+Generate application keys locally, then copy each value directly into GitHub:
 
 ```bash
-az storage container create --name "tfstate"   --account-name "stcmedifyhelmprod" --auth-mode key
-az storage container create --name "difydata"  --account-name "stcmedifyhelmprod" --auth-mode key
+cd deployments/aks
+bash scripts/generate-secrets.sh
 ```
 
-If you use `difydata`, set `azure_blob_container_name = "difydata"` in each env tfvars file.
+Never commit generated values or paste them into a tracked environment tfvars.
 
-**3. Get the account name and key**
+## Terraform backend prerequisite
 
-- **Account name:** Your storage account name (e.g. `stcmedifyhelmprod`). Add as GitHub **Variable** `AZURE_BLOB_ACCOUNT_NAME`.
-- **Key:** One of the two access keys. Add as GitHub **Secret** `AZURE_BLOB_ACCOUNT_KEY`.
-
-**Portal:** Storage account → Access keys → Show key1 → Copy **Key** value.
-
-**CLI:**
+The workflow expects an existing Azure Storage account and a private container
+named `tfstate`. It does not create them.
 
 ```bash
-az storage account keys list \
-  --resource-group "rg-cme-prod" \
-  --account-name "stcmedifyhelmprod" \
-  --query "[0].value" -o tsv
+az storage account create --name "<UNIQUE_NAME>" --resource-group "<BACKEND_RG>" \
+  --location australiaeast --sku Standard_LRS
+az storage container create --name tfstate --account-name "<UNIQUE_NAME>" \
+  --auth-mode key
+az storage account keys list --resource-group "<BACKEND_RG>" \
+  --account-name "<UNIQUE_NAME>" --query '[0].value' -o tsv
 ```
 
-**4. Add to each GitHub Environment**
+The storage account is currently for Terraform state. Dify and plugin files use
+Azure File PVCs; the declared Blob variables are not application object-storage
+wiring.
 
-- **Environment variables:** `AZURE_BLOB_ACCOUNT_NAME` (e.g. `stcmedifyhelmprod` for prod), and `BACKEND_RESOURCE_GROUP` (e.g. `rg-cme-prod`) — required for Terraform remote backend in CI.
-- **Environment secrets:** `AZURE_BLOB_ACCOUNT_KEY` = the key from step 3 (used for both Dify blob and Terraform backend).
+## Approvals and workflow use
 
-Use one storage account per environment (e.g. different account names in dev vs prod) so each GitHub Environment has its own credentials.
+Add required reviewers to `dev`, `uat`, and especially `prod`. Both plan and apply
+jobs reference the selected GitHub Environment, so protected environments may ask
+for approval twice. Review the saved Terraform plan before approving apply.
 
-### Generate secret values
+Run **Actions -> Deploy or teardown Dify on AKS -> Run workflow**:
 
-You can generate strong random values for the four secrets above. **Use each value only once** and store them in GitHub Secrets (do not commit).
+| Input | Choices / rule |
+| --- | --- |
+| `enabled` | Must be checked; unchecked is a safe no-op |
+| `action` | `deploy`, `teardown`, or `force-unlock` |
+| `environment` | `dev`, `uat`, `lite-prod`, or `prod-full` |
+| `deploy_mode` | `all`, `app`, or `db` for deploy |
+| `lock_id` | Required only for `force-unlock` |
 
-**Option A — Script (Git Bash, WSL, or Linux/macOS):**
+Runs are serialized per environment. Kubernetes upgrades are not part of this
+workflow; use [AKS_KUBERNETES_UPGRADE.md](./AKS_KUBERNETES_UPGRADE.md).
+
+For a stale state lock, first confirm no plan/apply is active. Then run
+`action=force-unlock` with the matching environment and the UUID printed by
+Terraform. Never unlock one environment while another process is using its state.
+
+## Local equivalent
+
+Create ignored `terraform.tfvars` and `backend.azurerm.tfvars` from their example
+files. The backend key must match the table above. Export secrets instead of
+writing them to disk when practical:
 
 ```bash
-cd deployments/aks && bash scripts/generate-secrets.sh
+export TF_VAR_azure_blob_account_name="<backend-account>"
+export TF_VAR_azure_blob_account_key="<backend-key>"
+export TF_VAR_azure_blob_account_url="https://<backend-account>.blob.core.windows.net"
+export TF_VAR_dify_secret_key="<value>"
+export TF_VAR_postgresql_password="<value>"
+export TF_VAR_redis_password="<value>"
+export TF_VAR_qdrant_api_key="<value>"
+
+# UAT only
+export PLUGIN_DAEMON_SERVER_KEY="<value>"
+export PLUGIN_DAEMON_DIFY_API_KEY="<value>"
 ```
 
-Use `bash scripts/generate-secrets.sh` (not `./generate-secrets.sh`) so it works even if the file has Windows line endings. If you see `'bash\r': No such file or directory`, run the same command with `bash` in front.
-
-Copy each line’s value into the matching GitHub Secret. The script uses `openssl rand` (Dify recommends base64 42 for `SECRET_KEY`).
-
-**Option B — One-liners:**
-
-| Secret | Bash (openssl) | PowerShell (crypto-safe) |
-|--------|----------------|-------------------------|
-| `DIFY_SECRET_KEY` | `openssl rand -base64 42` | `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(42))` |
-| `POSTGRESQL_PASSWORD` | `openssl rand -base64 32` | `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))` |
-| `REDIS_PASSWORD` | `openssl rand -base64 32` | (same as POSTGRESQL_PASSWORD) |
-| `QDRANT_API_KEY` | `openssl rand -hex 32` | `[BitConverter]::ToString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).Replace('-','').ToLower()` |
-
-**Note:** `AZURE_BLOB_ACCOUNT_KEY` comes from Azure (Storage account → Access keys), not from these generators.
-
-## Secrets for local runs
-
-For **local** runs (e.g. `./deploy.sh`), **deploy.sh** reads secrets from (in order):
-
-1. **Environment variables:** `TF_VAR_postgresql_password`, `TF_VAR_dify_secret_key`, `TF_VAR_redis_password`, `TF_VAR_qdrant_api_key`
-2. **terraform.tfvars:** if a TF_VAR is unset, deploy.sh parses `terraform.tfvars` in the same directory for the matching key.
-
-So you can either `export TF_VAR_...` in the shell or put the secrets in **terraform.tfvars** (do not commit that file). Required keys for Helm (so Dify works) are:
-
-| In terraform.tfvars (or TF_VAR_*) | Helm value | Required for |
-|-----------------------------------|------------|--------------|
-| `postgresql_password`             | externalPostgres.password | Azure Postgres + Dify API/worker/plugin-daemon |
-| `dify_secret_key`                 | global.appSecretKey      | Dify app signing/session |
-| `redis_password`                  | redis.auth.password      | Redis (in-cluster) |
-| `qdrant_api_key`                  | externalQdrant.apiKey    | Qdrant vector DB |
-
-Copy `environments/<env>.tfvars` to `terraform.tfvars`, then add the secret variables. See `environments/prod.tfvars.example` for a full example including placeholders for these and other optional vars (e.g. Azure blob for state).
-
-## Terraform remote backend (local runs)
-
-For **local** runs (e.g. `./deploy.sh`), Terraform uses the same **azurerm** backend. Create `deployments/aks/backend.azurerm.tfvars` from `backend.azurerm.tfvars.example`, set `resource_group_name`, `storage_account_name`, `container_name` = `tfstate`, `key` (e.g. `dev.terraform.tfstate` for dev, **`prod.terraform.tfstate`** for lite-prod or prod-full), and `access_key`. Do not commit `backend.azurerm.tfvars`. Then `deploy.sh` will run `terraform init -reconfigure -backend-config=backend.azurerm.tfvars` automatically.
-
-## Approvals (Recommended)
-
-This workflow is designed for a **single run** that does:
-
-- **Plan job** (Terraform plan saved to `tfplan` + Helm diffs)
-- **Apply job** (requires approval via GitHub Environment protection, then runs `terraform apply tfplan` + Helm upgrades)
-
-To enable approvals:
-
-1. Repo → **Settings** → **Environments**
-2. Select `dev`, `test`, and `prod`
-3. Under **Deployment protection rules**, enable **Required reviewers** and add your reviewers.
-
-Note: Because GitHub Environment secrets are only available to jobs that reference the environment, **both** the plan and apply jobs reference the environment. With required reviewers enabled, you will approve twice per workflow run (once before plan, once before apply). The apply approval is the meaningful one since the plan output is visible in the same run.
-
-## Status badge, unpin, disable
-
-- **Status badge:** Add to your README (replace OWNER/REPO):
-  ```markdown
-  [![Deploy or teardown Dify on AKS](https://github.com/OWNER/REPO/actions/workflows/deploy-aks.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/deploy-aks.yml)
-  ```
-- **Unpin workflow:** In the Actions tab, click the workflow → click the **pin** icon (if it’s pinned) to unpin it so it doesn’t stay at the top of the list.
-- **Disable by default:** The workflow has an input **“Enable workflow run”** (default **unchecked**). The job runs only when that box is checked. Leave it unchecked to avoid running; check it when you want to deploy or teardown.
-
-## Workflow inputs (manual run)
-
-When you click **Run workflow** you choose:
-
-- **enabled:** Check to allow the workflow to run (default: unchecked = disabled).
-- **action:** `deploy`, `teardown`, or `force-unlock`
-- **lock_id:** Terraform lock UUID (required when action = `force-unlock`; copy `Lock Info -> ID` from the error)
-- **deploy_mode:** `all`, `app`, or `db` (only when action = deploy)
-- **environment:** `dev`, `test`, `lite-prod`, or `prod-full` (picks the tfvars file **and** the GitHub Environment for secrets/variables)
-
-### Force-unlock stale Terraform state
-
-Use when a plan/apply fails with `Error acquiring the state lock` and you are sure no other run is still in progress.
-
-1. Run workflow with **action** = `force-unlock`, the matching **environment**, and **lock_id** from the error.
-2. Approve the environment gate if required.
-3. Re-run with **action** = `deploy` once unlock succeeds.
-
-Only unlock the environment whose state file is locked (`dev` → `dev.terraform.tfstate`, etc.). Do not force-unlock while another plan/apply is genuinely running.
-
-If force-unlock reports `terraformlockid was empty`, the lock is already gone (e.g. cleared locally or by a prior run). Skip unlock and run **action** = `deploy` directly.
-
-**How environment is used:** The selected value chooses both (1) which tfvars file is copied (e.g. `dev.tfvars`, `lite-prod.tfvars`) and (2) which GitHub Environment’s Variables and Secrets are used. Mapping: **dev** → env `dev`, **test** → env `test`, **lite-prod** and **prod-full** → env `prod`. So create GitHub Environments named exactly `dev`, `test`, and `prod`, and add the Variables and Secrets to each.
-
-## Troubleshooting: Can't run the workflow
-
-- **"Run workflow" not showing or disabled**  
-  The workflow only runs when triggered manually. Go to **Actions** → select **"Deploy or teardown Dify on AKS"** in the left sidebar → use the **Run workflow** dropdown. Choose the **branch** that contains this workflow file (e.g. `main`). If the workflow isn't on the default branch, run from the branch where `.github/workflows/deploy-aks.yml` exists. You need **write** access to the repo to run it.
-
-- **Workflow fails immediately with "Environment X could not be found"**  
-  The job uses a GitHub Environment (`dev`, `test`, or `prod`). Create them first: **Settings** → **Environments** → **New environment** → add `dev`, `test`, and `prod`. You can leave protection rules empty. Then add the Variables and Secrets to each environment.
-
-- **Workflow is waiting for approval**  
-  If an environment has **Required reviewers**, someone must approve the run. Either approve it or edit the environment and remove the required reviewers.
-
-- **Workflow file not on GitHub yet**  
-  Commit and push `.github/workflows/deploy-aks.yml` (and the rest of the repo). After push, the workflow appears under Actions and you can run it from the branch you pushed to.
-
-- **`Error acquiring the state lock`**  
-  Another process holds the remote state lock (often a cancelled CI run or a local `terraform plan`). Confirm nothing else is running, then use **action** = `force-unlock` with the lock **ID** from the error and the correct **environment**. Or run locally: `terraform force-unlock -force <lock-id>`.
+Then select the matching profile and run `./deploy.sh`. See
+[README.md](./README.md#deploy) for modes.

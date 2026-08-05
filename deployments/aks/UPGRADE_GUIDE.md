@@ -201,8 +201,9 @@ When upgrading, verify these match `dify/docker/docker-compose.yaml`:
 
 | Dify Version | API/Web Tag | Plugin Daemon Tag | Sandbox Tag | Notes |
 |-------------|-------------|-------------------|-------------|-------|
-| 1.11.2      | 1.11.2      | 0.5.2-local       | 0.2.12      | Current (matches docker-compose.yaml) |
-| 1.10.1      | 1.10.1      | 0.5.2-local       | 0.2.12      | Previous |
+| 1.12.1      | 1.12.1      | 0.5.3-local       | 0.2.12      | Current (see `values.yaml`) |
+| 1.11.2      | 1.11.2      | 0.5.2-local       | 0.2.12      | Previous |
+| 1.10.1      | 1.10.1      | 0.5.2-local       | 0.2.12      | Older |
 | 1.4.1       | 1.4.1       | 0.1.1-local       | 0.2.10      | Has constant variable bug |
 
 ## References
@@ -213,8 +214,5 @@ When upgrading, verify these match `dify/docker/docker-compose.yaml`:
 
 ## Related Documentation
 
-- [HTTPS Setup Guide](./HTTPS_SETUP_GUIDE.md) - HTTPS/TLS configuration
-- [Docker Compose Comparison](./DOCKER_COMPOSE_COMPARISON.md) - Configuration alignment
-- [Cost Summary](./COST_SUMMARY_2026-01-24.md) - Current estimates
-- [Cost Optimizations](./COST_OPTIMIZATIONS_2026-01-24.md) - Savings opportunities
-- [Infracost](./INFRACOST.md) - Exact estimates from Terraform
+- [README.md](./README.md) - Task index (HTTPS is issued automatically by cert-manager once DNS points at the ingress IP)
+- [INFRACOST.md](./INFRACOST.md) - Live cost estimates from Terraform
