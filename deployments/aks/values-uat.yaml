@@ -3,6 +3,24 @@
 # UAT exercises the production service topology and PostgreSQL TLS behavior, but
 # stays within a single Standard_D2s_v5 node. It is not an HA environment.
 
+# Dify 1.14.2 is staged here before dev and prod. These are chart 0.37.0's own
+# defaults, and they match dify 1.14.2's docker-compose.yaml exactly — we are
+# dropping the 1.12.1 override rather than introducing a new pairing.
+#
+# The pins live in this overlay rather than values.yaml so that a dev or prod
+# deploy run for an unrelated reason cannot pick up the new version by accident.
+# Promoting means moving this block into values.yaml, as a set: a plugin daemon
+# that does not match the API version returns 404 from the plugin endpoints.
+image:
+  api:
+    tag: "1.14.2"
+  web:
+    tag: "1.14.2"
+  sandbox:
+    tag: "0.2.15"
+  pluginDaemon:
+    tag: "0.6.1-local"
+
 api:
   replicas: 1
   resources:

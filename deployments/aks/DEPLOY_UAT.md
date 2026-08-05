@@ -28,7 +28,7 @@ perform an explicit state/data migration. Never point UAT at Dev or Prod state.
 | Maintenance | Scheduled manual window | UAT runs before Dev and Prod |
 | PostgreSQL | Flexible Server 16, B1ms, 32 GiB/P4 | Same service type as Prod, smaller size |
 | PostgreSQL protection | TLS required, 14-day PITR retention | Production-like behavior |
-| Dify | chart `0.37.0`; app images `1.12.1` | Pinned to the repository/live Dev baseline |
+| Dify | chart `0.37.0`; app images `1.14.2` | Chart `0.37.0`'s own tested defaults; staged here ahead of Dev/Prod |
 | cert-manager | `v1.21.1` | Supports Kubernetes 1.33-1.36 |
 | ingress-nginx | chart `4.15.1` | Pinned to the live Dev/Prod version |
 | Redis | Single persistent in-cluster master | Matches the current deployment topology |
@@ -201,8 +201,10 @@ Complete these explicitly:
   decision before enabling the same release there.
 - Azure Blob Terraform variables are not wired to Dify object storage. Do not
   remove the Azure File PVCs based on older documentation.
-- Chart `0.37.0` advertises app `1.14.2`, while the AKS values deliberately pin
-  Dify images `1.12.1`. Treat the application upgrade as a separate tested change.
+- UAT runs Dify `1.14.2` while Dev and Prod are still on `1.12.1`. That gap is
+  deliberate — UAT is staging the upgrade — but it means UAT is not a like-for-like
+  reproduction of a Dev/Prod issue until the versions are promoted. The pins are
+  in `values-uat.yaml`; see [UPGRADE_DIFY.md](./UPGRADE_DIFY.md).
 - The old managed-Corefile replacement is retired. UAT uses the supported
   `coredns-custom` ConfigMap for Azure PostgreSQL DNS forwarding.
 
