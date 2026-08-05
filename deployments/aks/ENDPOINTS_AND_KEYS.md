@@ -14,7 +14,7 @@ terraform output postgresql_fqdn
 terraform output postgresql_connection_string   # connection string without password
 ```
 
-**Other ways:** Azure Portal GåÆ Azure Database for PostgreSQL flexible servers GåÆ your server GåÆ Overview (Server name). Or Azure CLI: `az postgres flexible-server list --query "[].{Name:name, FQDN:fullyQualifiedDomainName}" -o table`.
+**Other ways:** Azure Portal â†’ Azure Database for PostgreSQL flexible servers â†’ your server â†’ Overview (Server name). Or Azure CLI: `az postgres flexible-server list --query "[].{Name:name, FQDN:fullyQualifiedDomainName}" -o table`.
 
 ---
 
@@ -36,27 +36,24 @@ Use the `EXTERNAL-IP` column. Access Dify at `https://<your-domain>/apps` (once 
 
 ## Terraform backend storage key
 
-The Azure Storage key is used by the Terraform backend. Dify file storage uses
-Azure File PVCs; Blob variables are not currently wired to the application.
-**Do not commit the key.**
+Creating the backend resource group, storage account, and container is covered
+once in [GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md#b-terraform-backend).
 
-**Azure Portal:** Storage accounts GåÆ your account GåÆ Access keys GåÆ Show GåÆ Copy (key1 or key2).
-
-**Azure CLI:**
+To read the key for an account that already exists:
 
 ```bash
 az storage account keys list \
-  --resource-group <resource-group-name> \
+  --resource-group <backend-resource-group> \
   --account-name <storage-account-name> \
   --query "[0].value" -o tsv
 ```
 
-**Create backend storage (if needed):**
+Portal equivalent: Storage accounts â†’ your account â†’ Access keys â†’ Show â†’ copy
+key1 or key2.
 
-```bash
-az storage account create --name <name> --resource-group <rg> --location australiaeast --sku Standard_LRS --kind StorageV2
-az storage container create --name tfstate --account-name <name> --auth-mode login
-```
+Use it only in a gitignored `backend.azurerm.tfvars` or as the
+`AZURE_BLOB_ACCOUNT_KEY` GitHub secret â€” never commit it (see
+[SECRETS.md](./SECRETS.md)).
 
-Use the key only in ignored backend configuration or GitHub Secrets (see
-[GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md)); never commit it.
+This account holds Terraform state only. Dify and plugin files live on Azure
+File PVCs; the Blob variables are not wired to application storage.

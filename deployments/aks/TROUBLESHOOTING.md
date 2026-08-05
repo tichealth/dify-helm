@@ -6,7 +6,7 @@ When `./deploy.sh` hangs on Helm, fails with **context deadline exceeded**, or p
 
 ## 0. Azure PostgreSQL firewall (Helm times out / pods never Ready)
 
-If **`postgres_open_firewall_all = false`**, the Postgres firewall has no allow rules and Dify pods in AKS cannot connect GåÆ Helm times out (**context deadline exceeded**). **Fix:** set **`postgres_open_firewall_all = true`** in your environment tfvars (e.g. lite-prod) so Terraform creates the allow-all rule. For locked-down prod, add rules in Azure Portal and keep `false`.
+If **`postgres_open_firewall_all = false`**, the Postgres firewall has no allow rules and Dify pods in AKS cannot connect â†’ Helm times out (**context deadline exceeded**). **Fix:** set **`postgres_open_firewall_all = true`** in your environment tfvars (e.g. lite-prod) so Terraform creates the allow-all rule. For locked-down prod, add rules in Azure Portal and keep `false`.
 
 ---
 
@@ -28,7 +28,7 @@ sleep 5
 
 ## 2. Fix DNS (Private DNS Zone link to AKS)
 
-Pods can't resolve `*.<project>-pg-*.privatelink.postgres.database.azure.com` (NXDOMAIN). Usually the Private DNS Zone link to the AKS VNet is wrong or TerraformGÇÖs data source didnGÇÖt find the VNet yet.
+Pods can't resolve `*.<project>-pg-*.privatelink.postgres.database.azure.com` (NXDOMAIN). Usually the Private DNS Zone link to the AKS VNet is wrong or Terraformâ€™s data source didnâ€™t find the VNet yet.
 
 **Recommended sequence:**
 
@@ -119,3 +119,45 @@ kubectl rollout restart deployment/coredns -n kube-system && \
 sleep 30 && \
 ./deploy.sh --app --auto-approve
 ```
+
+---
+
+## 6. Site unreachable after a deploy (NSG rules)
+
+`deploy.sh` runs `fix-nsg-rules.sh` automatically, but verify the rules landed
+in the AKS **node** resource group:
+
+```bash
+NODE_RG=$(az aks show --resource-group <rg> --name <cluster> --query nodeResourceGroup -o tsv)
+NSG_NAME=$(az network nsg list --resource-group "$NODE_RG" --query "[0].name" -o tsv)
+az network nsg rule list --resource-group "$NODE_RG" --nsg-name "$NSG_NAME" \
+  --query "[?destinationPortRanges=='80' || destinationPortRanges=='443']" -o table
+```
+
+Then check the LoadBalancer has an external IP, and prove the app answers from
+inside the cluster to isolate ingress from application faults:
+
+```bash
+kubectl get svc -n ingress-nginx ingress-nginx-controller
+kubectl run -it --rm test --image=curlimages/curl --restart=Never -- \
+  curl -I http://dify.dify.svc.cluster.local
+```
+
+If the in-cluster curl succeeds but the public hostname fails, the problem is
+NSG, DNS, or the LoadBalancer â€” not Dify.
+
+---
+
+## 7. Terraform destroy fails
+
+```bash
+# State locked by an interrupted run - confirm nothing is active first
+terraform force-unlock <lock-id>
+
+# Resource already deleted out of band and blocking the destroy
+terraform state rm <resource-address>
+```
+
+In CI, use the workflow's `action: force-unlock` with the matching environment
+and the UUID Terraform printed. Never unlock one environment while another
+process is using its state.

@@ -1,218 +1,115 @@
 # Upgrade Dify (application)
 
-This guide documents how to upgrade Dify on AKS, ensuring compatibility with the official docker-compose.yaml configuration.
+Application upgrades are a **values change plus a normal deploy** — never a
+hand-rolled `helm upgrade`. `deploy.sh` pins the chart version, layers the
+environment overlay, and injects secrets; running Helm directly skips all three.
 
-## Overview
+For Kubernetes cluster upgrades see [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md).
 
-When upgrading Dify versions, it's important to:
-1. Match image versions with the official docker-compose.yaml
-2. Ensure plugin daemon version compatibility
-3. Verify configuration alignment
-4. Test the deployment
+## What controls the version
 
-## Version Compatibility Reference
+| Thing | Where | Current |
+| --- | --- | --- |
+| Helm chart | `DIFY_CHART_VERSION` in `deploy.sh` | `0.37.0` |
+| API / Web image | `image.api.tag` / `image.web.tag` in `values.yaml` | `1.12.1` |
+| Plugin daemon | `image.pluginDaemon.tag` in `values.yaml` | `0.5.3-local` |
+| Sandbox | `image.sandbox.tag` in `values.yaml` | `0.2.12` |
 
-### Dify 1.11.2 (Current)
+Chart `0.37.0` advertises app `1.14.2`, but the AKS values deliberately pin
+`1.12.1`. Chart bumps and image bumps are **separate, separately tested changes**.
 
-Based on `dify/docker/docker-compose.yaml`:
+## Upgrade procedure
 
-- **API**: `langgenius/dify-api:1.11.2`
-- **Web**: `langgenius/dify-web:1.11.2`
-- **Sandbox**: `langgenius/dify-sandbox:0.2.12`
-- **Plugin Daemon**: `langgenius/dify-plugin-daemon:0.5.2-local`
+### 1. Pick the target versions
 
-## Upgrade Steps
+Cross-check the tags against the upstream `dify/docker/docker-compose.yaml` for
+the release you're moving to — the plugin daemon and sandbox tags must match the
+API/Web version, or plugins fail to load.
 
-### 1. Check Current Version
-
-```bash
-cd dify-helm/deployments/aks
-
-# Check current Helm values
-helm get values dify -n dify | grep -A 1 "tag:"
-
-# Check running pods
-kubectl get pods -n dify -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}' | grep -E 'api|web|plugin'
-```
-
-### 2. Compare with docker-compose.yaml
-
-Before upgrading, compare your `values.yaml` with the official `dify/docker/docker-compose.yaml` to ensure:
-- Image versions match
-- Plugin daemon version is compatible
-- Configuration settings are aligned
-
-```bash
-# Check docker-compose.yaml versions
-grep -E "langgenius/dify-(api|web|plugin-daemon|sandbox):" dify/docker/docker-compose.yaml
-```
-
-### 3. Update values.yaml
-
-Edit `dify-helm/deployments/aks/values.yaml`:
+### 2. Edit `values.yaml`
 
 ```yaml
 image:
   api:
-    repository: langgenius/dify-api
-    tag: "1.11.2"  # Update this
-    pullPolicy: IfNotPresent
+    tag: "<new-version>"
   web:
-    repository: langgenius/dify-web
-    tag: "1.11.2"  # Update this
-    pullPolicy: IfNotPresent
+    tag: "<new-version>"
   sandbox:
-    repository: langgenius/dify-sandbox
-    tag: "0.2.12"  # Match docker-compose.yaml version
-    pullPolicy: IfNotPresent
+    tag: "<matching-sandbox-tag>"
   pluginDaemon:
-    repository: langgenius/dify-plugin-daemon
-    tag: "0.5.2-local"  # Match docker-compose.yaml version
-    pullPolicy: IfNotPresent
+    tag: "<matching-plugin-tag>"
 ```
 
-### 4. Perform Helm Upgrade
+If the chart itself is moving, also update `DIFY_CHART_VERSION` in `deploy.sh`.
+
+### 3. Deploy to UAT first
+
+**Actions → Deploy or teardown Dify on AKS → Run workflow**, with
+`environment: uat` and `deploy_mode: app`. Review the Helm diff in the plan job
+before approving.
+
+Local equivalent:
 
 ```bash
-cd dify-helm/deployments/aks
-
-# Update Helm repository (if using external chart)
-helm repo update dify
-
-# Upgrade the release
-helm upgrade dify dify/dify \
-  -f values.yaml \
-  --namespace dify \
-  --timeout 20m \
-  --wait
+cd deployments/aks
+./deploy.sh --app --auto-approve
 ```
 
-### 5. Verify the Upgrade
+### 4. Validate on UAT
 
 ```bash
-# Check pod images
-kubectl get pods -n dify -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}' | grep -E 'api|web|plugin'
-
-# Check pod status
 kubectl get pods -n dify
-
-# Check API logs for errors
+kubectl get pods -n dify -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
 kubectl logs -n dify -l app.kubernetes.io/component=api --tail=50 | grep -i error
-
-# Get service URL
-kubectl get svc -n dify dify
 ```
 
-### 6. Rollback (if needed)
+Run the acceptance checklist in [DEPLOY_UAT.md](./DEPLOY_UAT.md#acceptance-checklist):
+login, streaming chat, workflow execution, file upload, plugins, and a
+knowledge-base index/retrieve.
 
-If the upgrade fails:
+### 5. Promote the same artifacts to Prod
+
+Commit the values change, then run the workflow with `environment: lite-prod`
+(or `prod-full`) and `deploy_mode: app`. Promote the **exact** versions accepted
+in UAT — do not change tags between the two runs.
+
+## Rollback
 
 ```bash
-# List Helm revisions
 helm history dify -n dify
-
-# Rollback to previous revision
 helm rollback dify <revision-number> -n dify
-
-# Or rollback to last revision
-helm rollback dify -n dify
 ```
 
-## Important Notes
+Then revert the `values.yaml` change in git so the next deploy doesn't
+reintroduce the bad version.
 
-### Plugin Daemon Version
+Rollback only reverts the Kubernetes release. If the new version applied
+database migrations, restore PostgreSQL from the pre-upgrade backup — always
+take one before a major version jump.
 
-The plugin daemon version is critical for plugin functionality:
-- Must match the version in `dify/docker/docker-compose.yaml`
-- Current version for Dify 1.11.2: `0.5.2-local`
-- Older versions (e.g., `0.1.1-local`) may cause plugin errors
+## Things that bite
 
-### Storage Class
+- **Plugin daemon mismatch.** The tag must match the API version's
+  docker-compose pairing. A stale daemon causes 404s from the plugin endpoints.
+- **Pods Pending on CPU.** Single-node clusters have little headroom during a
+  rolling update. Check `kubectl describe nodes`; wait for old pods to terminate.
+- **Storage classes.** API and plugin daemon need `azurefile` (ReadWriteMany);
+  Redis uses the default class (ReadWriteOnce). Don't change these during an
+  application upgrade.
+- **Stale UI after upgrade.** Hard-refresh the browser before assuming the
+  deploy failed; confirm with the pod-image command in step 4.
 
-Ensure storage classes are correctly configured for Azure:
-- API and Plugin Daemon need `azurefile` storage class (ReadWriteMany)
-- PostgreSQL and Redis use default storage class (ReadWriteOnce)
+## Version history
 
-### Resource Constraints
-
-Monitor resource usage during upgrades:
-- Plugin daemon requires 500m CPU request
-- Ensure cluster has sufficient resources for rolling updates
-- Check for Pending pods due to resource constraints
-
-## Common Issues
-
-### Issue: Plugin Installation Errors / 500 Errors on Triggers Endpoint
-
-**Symptoms:**
-- 404 errors from plugin daemon
-- 500 errors on `/console/api/workspaces/current/triggers`
-- Plugins not loading
-
-**Root Cause:**
-- This is a **known bug in Dify 1.11.2** - the API doesn't handle 404 responses from plugin daemon gracefully when plugins don't have triggers
-- The API code raises an exception instead of returning an empty list
-- This is an API code issue, not a deployment issue
-
-**Solution:**
-- **Workaround**: The errors are cosmetic - plugins still work for tools/models even if triggers endpoint fails
-- Ensure plugin daemon version matches docker-compose.yaml (current: 0.5.2-local)
-- Check plugin daemon pod is running: `kubectl get pods -n dify | grep plugin`
-- Verify plugin daemon logs: `kubectl logs -n dify -l app.kubernetes.io/component=plugin-daemon --tail=50`
-- **Note**: Upgrading plugin daemon won't fix this - it's an API code bug that needs to be fixed in a future Dify release
-
-### Issue: Pods Pending Due to CPU
-
-**Symptoms:**
-- Pods stuck in Pending state
-- Events show "Insufficient cpu"
-
-**Solution:**
-- Check cluster resources: `kubectl describe nodes`
-- Wait for old pods to terminate
-- Consider scaling the cluster or reducing resource requests
-
-### Issue: Version Mismatch in UI
-
-**Symptoms:**
-- UI shows old version after upgrade
-- Browser cache issues
-
-**Solution:**
-- Hard refresh browser: `Ctrl+Shift+R` (Windows) or `Cmd+Shift+R` (Mac)
-- Clear browser cache
-- Verify pods are running new version: `kubectl get pods -n dify -o jsonpath='{.items[*].spec.containers[0].image}'`
-
-## Configuration Comparison Checklist
-
-When upgrading, verify these match `dify/docker/docker-compose.yaml`:
-
-- [ ] API image version
-- [ ] Web image version  
-- [ ] Sandbox image version
-- [ ] Plugin daemon image version
-- [ ] Plugin daemon authentication keys (serverKey, difyApiKey)
-- [ ] PostgreSQL password (if using embedded)
-- [ ] Redis password (if using embedded)
-- [ ] Storage configuration
-- [ ] Resource limits (optional, but recommended to match)
-
-## Version History
-
-| Dify Version | API/Web Tag | Plugin Daemon Tag | Sandbox Tag | Notes |
-|-------------|-------------|-------------------|-------------|-------|
-| 1.12.1      | 1.12.1      | 0.5.3-local       | 0.2.12      | Current (see `values.yaml`) |
-| 1.11.2      | 1.11.2      | 0.5.2-local       | 0.2.12      | Previous |
-| 1.10.1      | 1.10.1      | 0.5.2-local       | 0.2.12      | Older |
-| 1.4.1       | 1.4.1       | 0.1.1-local       | 0.2.10      | Has constant variable bug |
+| Dify | API/Web | Plugin daemon | Sandbox | Notes |
+| --- | --- | --- | --- | --- |
+| 1.12.1 | 1.12.1 | 0.5.3-local | 0.2.12 | Current (see `values.yaml`) |
+| 1.11.2 | 1.11.2 | 0.5.2-local | 0.2.12 | Previous |
+| 1.10.1 | 1.10.1 | 0.5.2-local | 0.2.12 | Older |
+| 1.4.1 | 1.4.1 | 0.1.1-local | 0.2.10 | Has constant-variable bug |
 
 ## References
 
-- Official docker-compose.yaml: `dify/docker/docker-compose.yaml`
-- Dify Helm Chart: https://borispolonsky.github.io/dify-helm
-- Dify Documentation: https://docs.dify.ai
-
-## Related Documentation
-
-- [README.md](./README.md) - Task index (HTTPS is issued automatically by cert-manager once DNS points at the ingress IP)
-- [COSTS.md](./COSTS.md) - Live cost estimates from Terraform
+- Upstream compose file: `dify/docker/docker-compose.yaml`
+- Chart repo: https://borispolonsky.github.io/dify-helm
+- Dify docs: https://docs.dify.ai
