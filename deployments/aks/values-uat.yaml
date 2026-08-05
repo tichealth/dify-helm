@@ -11,15 +11,20 @@
 # deploy run for an unrelated reason cannot pick up the new version by accident.
 # Promoting means moving this block into values.yaml, as a set: a plugin daemon
 # that does not match the API version returns 404 from the plugin endpoints.
-image:
-  api:
-    tag: "1.14.2"
-  web:
-    tag: "1.14.2"
-  sandbox:
-    tag: "0.2.15"
-  pluginDaemon:
-    tag: "0.6.1-local"
+#
+# Held back for the initial UAT build so the first deploy inherits values.yaml's
+# matched 1.12.1 set and can take a restore of the dev database without also
+# running upgrade migrations. Uncomment as a set once dev parity is confirmed;
+# that is the 1.14.2 upgrade rehearsal (UPGRADE_DIFY.md).
+# image:
+#   api:
+#     tag: "1.14.2"
+#   web:
+#     tag: "1.14.2"
+#   sandbox:
+#     tag: "0.2.15"
+#   pluginDaemon:
+#     tag: "0.6.1-local"
 
 api:
   replicas: 1
