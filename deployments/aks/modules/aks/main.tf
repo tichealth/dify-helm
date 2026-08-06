@@ -25,6 +25,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
     ignore_changes = [
       kubernetes_version,
       default_node_pool[0].orchestrator_version,
+      # AKS enables the OIDC issuer itself on current versions and rejects any
+      # attempt to turn it off ("OIDCIssuerFeatureCannotBeDisabled"), so the
+      # provider default of false is unappliable drift. Ignoring it keeps the
+      # attribute at whatever each cluster already has: UAT stays enabled, and
+      # Dev and Prod are not flipped by an unrelated deploy. Manage it here
+      # explicitly if Workload Identity (TODO.md P3) ever needs it on.
+      oidc_issuer_enabled,
     ]
   }
 }
