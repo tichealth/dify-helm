@@ -197,9 +197,20 @@ jobs:
       - name: Output DNS configuration
         if: inputs.action == 'deploy' && inputs.deploy_mode != 'db'
         run: |
-          CLUSTER=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
-          RG=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
-          [ -z "$CLUSTER" ] || [ -z "$RG" ] && { echo "Could not get cluster/RG from TF state; skipping DNS step."; exit 0; }
+          tf_output() {
+            local val
+            val=$(terraform output -raw "$1" 2>/dev/null) || return 0
+            case "$val" in
+              *Warning:*|*'╷'*|*'│'*|*$'\n'*) return 0 ;;
+            esac
+            printf '%s' "$val"
+          }
+          CLUSTER=$(tf_output aks_cluster_name)
+          RG=$(tf_output resource_group_name)
+          if [ -z "$CLUSTER" ] || [ -z "$RG" ]; then
+            echo "Could not get cluster/RG from TF state; skipping DNS step."
+            exit 0
+          fi
           az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
           LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
           [ -z "$LB_IP" ] && LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
@@ -211,8 +222,16 @@ jobs:
         if: inputs.action == 'teardown'
         timeout-minutes: 60
         run: |
-          CLUSTER=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
-          RG=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
+          tf_output() {
+            local val
+            val=$(terraform output -raw "$1" 2>/dev/null) || return 0
+            case "$val" in
+              *Warning:*|*'╷'*|*'│'*|*$'\n'*) return 0 ;;
+            esac
+            printf '%s' "$val"
+          }
+          CLUSTER=$(tf_output aks_cluster_name)
+          RG=$(tf_output resource_group_name)
           if [ -n "$CLUSTER" ] && [ -n "$RG" ]; then
             az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
             helm uninstall dify -n dify 2>/dev/null || true

@@ -47,6 +47,18 @@ done
 is_plan()  { [ "$MODE" = "plan-stage" ]; }
 is_apply() { [ "$MODE" = "apply-stage" ]; }
 
+# On an empty state `terraform output -raw` exits 0 and writes its "No outputs
+# found" warning to stdout, so a plain capture returns the warning text rather
+# than an empty string. Emit nothing unless the value looks like a real output.
+tf_output() {
+    local val
+    val=$(terraform output -raw "$1" 2>/dev/null) || return 0
+    case "$val" in
+        *Warning:*|*'╷'*|*'│'*|*$'\n'*) return 0 ;;
+    esac
+    printf '%s' "$val"
+}
+
 CERT_EMAIL="${CERT_EMAIL:-vivek.narayanan@tichealth.com.au}"
 
 on_err() {
@@ -126,7 +138,8 @@ if [ "$DEPLOY_MODE" = "db" ]; then
     if is_plan; then
         echo -e "${GREEN}✓ Plan stage complete (db scope).${NC}"
     else
-        POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn 2>/dev/null || echo "N/A")
+        POSTGRES_FQDN=$(tf_output postgresql_fqdn)
+        POSTGRES_FQDN="${POSTGRES_FQDN:-N/A}"
         echo -e "${GREEN}DB complete.${NC} PostgreSQL FQDN: $POSTGRES_FQDN"
     fi
     exit 0
@@ -134,8 +147,8 @@ fi
 
 # ----- Step 3: AKS credentials ----------------------------------------------
 echo -e "${YELLOW}Step 3: Getting AKS credentials${NC}"
-CLUSTER_NAME=$(terraform output -raw aks_cluster_name 2>/dev/null || true)
-RG_NAME=$(terraform output -raw resource_group_name 2>/dev/null || true)
+CLUSTER_NAME=$(tf_output aks_cluster_name)
+RG_NAME=$(tf_output resource_group_name)
 if [ -z "$CLUSTER_NAME" ] || [ -z "$RG_NAME" ]; then
     if is_plan; then
         echo -e "${YELLOW}AKS does not exist yet; Terraform plan is complete and Helm diffs are skipped.${NC}"
@@ -284,7 +297,7 @@ SECRETS_DIR=$(mktemp -d); trap 'rm -rf "$SECRETS_DIR"' EXIT
 DIFY_ARGS=( --namespace "$NAMESPACE" --version "$DIFY_CHART_VERSION" )
 [[ -f "$VALUES_FILE" ]] && DIFY_ARGS+=( -f "$VALUES_FILE" )
 
-POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn 2>/dev/null || true)
+POSTGRES_FQDN=$(tf_output postgresql_fqdn)
 [[ -n "$POSTGRES_FQDN" && "$POSTGRES_FQDN" != *"N/A"* ]] && \
     DIFY_ARGS+=( --set "externalPostgres.address=$POSTGRES_FQDN" )
 
