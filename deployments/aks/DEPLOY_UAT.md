@@ -28,7 +28,7 @@ perform an explicit state/data migration. Never point UAT at Dev or Prod state.
 | Maintenance | Scheduled manual window | UAT runs before Dev and Prod |
 | PostgreSQL | Flexible Server 16, B1ms, 32 GiB/P4 | Same service type as Prod, smaller size |
 | PostgreSQL protection | TLS required, 14-day PITR retention | Production-like behavior |
-| Dify | chart `0.37.0`; app images `1.14.2` | Chart `0.37.0`'s own tested defaults; staged here ahead of Dev/Prod |
+| Dify | chart `0.37.0`; app images `1.12.1` initially, then `1.14.2` | Builds at Dev parity so a Dev restore needs no migrations; `1.14.2` is staged as a deliberate upgrade step |
 | cert-manager | `v1.21.1` | Supports Kubernetes 1.33-1.36 |
 | ingress-nginx | chart `4.15.1` | Pinned to the live Dev/Prod version |
 | Redis | Single persistent in-cluster master | Matches the current deployment topology |
@@ -49,8 +49,8 @@ One node means expected downtime during node maintenance and no node-level HA.
 
 ## Setting up UAT from scratch
 
-Six steps, roughly 30 minutes of setup plus ~25 minutes of apply time. Steps 1-3
-are one-time; step 4 onward is the deploy itself.
+Seven steps, roughly 30 minutes of setup plus ~25 minutes of apply time. Steps
+1-3 are one-time; step 4 onward is the deploy itself.
 
 ### 1. Create the Terraform backend (one-time)
 
@@ -117,7 +117,13 @@ Follow [First deployment](#first-deployment) below.
 Create the A record from the LoadBalancer IP the workflow prints, then wait for
 cert-manager to issue the certificate.
 
-### 6. Bootstrap the application
+### 6. Seed the database from Dev (optional)
+
+To rehearse the Dify upgrade against realistic data, restore Dev's PostgreSQL now
+— before bootstrap, which the restore would otherwise overwrite. Follow
+[RESTORE_DEV_TO_UAT.md](./RESTORE_DEV_TO_UAT.md) and skip step 7.
+
+### 7. Bootstrap the application
 
 Follow [Application bootstrap](#application-bootstrap) — admin account, model
 providers, workflow imports, API keys.
@@ -201,10 +207,12 @@ Complete these explicitly:
   decision before enabling the same release there.
 - Azure Blob Terraform variables are not wired to Dify object storage. Do not
   remove the Azure File PVCs based on older documentation.
-- UAT runs Dify `1.14.2` while Dev and Prod are still on `1.12.1`. That gap is
-  deliberate — UAT is staging the upgrade — but it means UAT is not a like-for-like
-  reproduction of a Dev/Prod issue until the versions are promoted. The pins are
-  in `values-uat.yaml`; see [UPGRADE_DIFY.md](./UPGRADE_DIFY.md).
+- UAT is built at Dev parity on Dify `1.12.1`, with the `1.14.2` pins held
+  commented out in `values-uat.yaml`. Enabling them is the upgrade rehearsal, and
+  it should follow a Dev database restore so the migrations run against real data
+  — see [RESTORE_DEV_TO_UAT.md](./RESTORE_DEV_TO_UAT.md) and
+  [UPGRADE_DIFY.md](./UPGRADE_DIFY.md). Until they are enabled, UAT and Dev run
+  identical application versions.
 - The old managed-Corefile replacement is retired. UAT uses the supported
   `coredns-custom` ConfigMap for Azure PostgreSQL DNS forwarding.
 

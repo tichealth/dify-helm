@@ -8,6 +8,7 @@ releases. This page is the documentation entry point for the AKS deployment.
 | Task | Document |
 | --- | --- |
 | Stand up UAT from scratch | [DEPLOY_UAT.md](./DEPLOY_UAT.md) |
+| Seed a new UAT with Dev data | [RESTORE_DEV_TO_UAT.md](./RESTORE_DEV_TO_UAT.md) |
 | Deploy or resize Prod | [DEPLOY_PROD.md](./DEPLOY_PROD.md) |
 | Configure GitHub Environments, secrets, and the workflow | [GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md) |
 | Upgrade the Kubernetes cluster | [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md) |
