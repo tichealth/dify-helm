@@ -3,6 +3,10 @@
 .vscode
 .DS_Store
 
+# Local secret material (never commit)
+**/.env.local
+**/.env.*.local
+
 # Terraform secrets (never commit)
 **/terraform.tfvars*
 **/backend.azurerm.tfvars*
