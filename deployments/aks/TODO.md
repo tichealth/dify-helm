@@ -41,18 +41,24 @@ no VNet injection. Only the `difyadmin` password separates the internet from the
 - [ ] **AKS K8s upgrade to 1.35.** Both Dev (1.33.6) and Prod (1.33.7) need
       `1.33 → 1.34 → 1.35`, one minor at a time. Runbook in
       [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES.md).
-- [ ] **Qdrant migration for Dev/Prod.** Existing Dev/Prod values reference the
-      `dify-qdrant` service but have no Qdrant Helm release. UAT is the first env
-      with automated Qdrant. Decide: fresh index vs. export/import from wherever
-      the current vectors actually live, then enable the same release + values
-      overlay for Dev/Prod.
+- [ ] **Qdrant for Dev/Prod — no data migration needed.** Dev/Prod values
+      reference the `dify-qdrant` service but have no Qdrant Helm release. A
+      2026-08-06 inventory of `dify-pg-9764` found the knowledge base empty
+      (`document_segments` 0 rows; no `datasets`/`documents` above 56 kB), so there
+      are no vectors to export and the earlier export/import question is moot.
+      Remaining work is just enabling the UAT release + values overlay for
+      Dev/Prod; any indexing starts fresh. Re-check Prod before acting.
 
 ## UAT-specific
 
-- [ ] **Replace the temporary PG allow-all firewall.** UAT PG is public with
-      `postgres_open_firewall_all = true` because the GitHub-hosted runner needs
-      it for bootstrap. Move UAT to a private runner (or an explicit AKS-outbound
-      + runner-IP firewall pair) before calling it production-equivalent.
+- [x] **Replaced the temporary PG allow-all firewall.** UAT PG is VNet-injected and
+      private on `10.2.0.0/16` as of 2026-08-06, matching Dev. Done while the server
+      was still empty: public→private forces a Flexible Server replacement, so the
+      cost of this rises sharply once the Dev restore lands. Terraform's
+      `create_extensions_*` provisioners can no longer reach the server from the
+      runner — they already end in `|| true`, and Dify's own migrations create
+      `vector` and `uuid-ossp` under the `azure.extensions` allowlist, which is how
+      Dev has always worked.
 - [ ] **Dify application config bootstrap** on first deploy: admin account,
       model providers, workflow DSL import, UAT API keys, downstream
       `cme-webapp-api` `DIFY_HTTP_ENDPOINT_URL` update, sanitized test data,

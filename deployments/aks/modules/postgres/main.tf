@@ -241,8 +241,12 @@ resource "null_resource" "create_pg_app_dns_record" {
         echo "ERROR: Verify failed – invalid IP format: $IP" >&2
         exit 1
       fi
-      if ! echo "$IP" | grep -qE '^10\.1\.1\.'; then
-        echo "WARN: Verify – IP $IP not in postgres subnet 10.1.1.0/24; continuing anyway." >&2
+      PG_SUBNET='${length(var.postgres_subnet_address_prefixes) > 0 ? var.postgres_subnet_address_prefixes[0] : ""}'
+      if [ -n "$PG_SUBNET" ]; then
+        PG_PREFIX=$(echo "$PG_SUBNET" | cut -d/ -f1 | cut -d. -f1-3)
+        if ! echo "$IP" | grep -qE "^$PG_PREFIX\."; then
+          echo "WARN: Verify – IP $IP not in postgres subnet $PG_SUBNET; continuing anyway." >&2
+        fi
       fi
       echo "Verify OK: Azure internal A record exists, IP=$IP. Creating $PG_NAME -> $IP ..."
       az network private-dns record-set a add-record -g "$RG" --zone-name "$ZONE" --record-set-name "$PG_NAME" --ipv4-address "$IP"
