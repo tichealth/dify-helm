@@ -383,8 +383,8 @@ if [ "${INSTALL_QDRANT:-false}" = "true" ]; then
         --version "$QDRANT_CHART_VERSION"
         --set replicaCount=1
         --set persistence.size=10Gi
-        --set resources.requests.cpu=100m
-        --set resources.requests.memory=512Mi
+        --set resources.requests.cpu=50m
+        --set resources.requests.memory=256Mi
         --set resources.limits.memory=2Gi
         --set-file "apiKey=$QDRANT_KEY_FILE"
     )
