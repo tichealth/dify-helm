@@ -12,19 +12,20 @@ global:
   appSecretKey: "override-by-deploy-script"  # deploy.sh passes via --set-file from TF_VAR_dify_secret_key or dify_secret_key
   internalApiKey: ""
 
-# Image versions
+# Image versions — pairing from langgenius/dify@1.14.2 docker-compose.yaml.
+# Move as a set: plugin daemon must match the API or plugin endpoints 404.
 image:
   api:
     repository: langgenius/dify-api
-    tag: "1.12.1"
+    tag: "1.14.2"
     pullPolicy: IfNotPresent
   web:
     repository: langgenius/dify-web
-    tag: "1.12.1"
+    tag: "1.14.2"
     pullPolicy: IfNotPresent
   sandbox:
     repository: langgenius/dify-sandbox
-    tag: "0.2.12"
+    tag: "0.2.15"
     pullPolicy: IfNotPresent
   proxy:
     repository: nginx
@@ -38,7 +39,7 @@ image:
     pullPolicy: IfNotPresent
   pluginDaemon:
     repository: langgenius/dify-plugin-daemon
-    tag: "0.5.3-local"
+    tag: "0.6.1-local"
     pullPolicy: IfNotPresent
 
 # API Configuration
