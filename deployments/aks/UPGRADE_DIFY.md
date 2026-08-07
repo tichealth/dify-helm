@@ -8,12 +8,12 @@ For Kubernetes cluster upgrades see [UPGRADE_KUBERNETES.md](./UPGRADE_KUBERNETES
 
 ## What controls the version
 
-| Thing | Where | Dev / Prod | UAT |
-| --- | --- | --- | --- |
-| Helm chart | `DIFY_CHART_VERSION` in `deploy.sh` | `0.37.0` | `0.37.0` |
-| API / Web image | `image.api.tag` / `image.web.tag` | `1.12.1` | `1.14.2` |
-| Plugin daemon | `image.pluginDaemon.tag` | `0.5.3-local` | `0.6.1-local` |
-| Sandbox | `image.sandbox.tag` | `0.2.12` | `0.2.15` |
+| Thing | Where | Dev / UAT / Prod |
+| --- | --- | --- |
+| Helm chart | `DIFY_CHART_VERSION` in `deploy.sh` | `0.37.0` |
+| API / Web image | `image.api.tag` / `image.web.tag` | `1.14.2` |
+| Plugin daemon | `image.pluginDaemon.tag` | `0.6.1-local` |
+| Sandbox | `image.sandbox.tag` | `0.2.15` |
 
 Chart bumps and image bumps are **separate, separately tested changes**.
 
@@ -131,8 +131,8 @@ take one before a major version jump.
 
 | Dify | API/Web | Plugin daemon | Sandbox | Notes |
 | --- | --- | --- | --- | --- |
-| 1.14.2 | 1.14.2 | 0.6.1-local | 0.2.15 | Staged in UAT (`values-uat.yaml`); chart `0.37.0` defaults |
-| 1.12.1 | 1.12.1 | 0.5.3-local | 0.2.12 | Live on Dev/Prod (`values.yaml`) |
+| 1.14.2 | 1.14.2 | 0.6.1-local | 0.2.15 | Live in `values.yaml`; chart `0.37.0`; compose pairing from tag `1.14.2` |
+| 1.12.1 | 1.12.1 | 0.5.3-local | 0.2.12 | Previous |
 | 1.11.2 | 1.11.2 | 0.5.2-local | 0.2.12 | Previous |
 | 1.10.1 | 1.10.1 | 0.5.2-local | 0.2.12 | Older |
 | 1.4.1 | 1.4.1 | 0.1.1-local | 0.2.10 | Has constant-variable bug |

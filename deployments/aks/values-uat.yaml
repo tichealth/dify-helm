@@ -3,28 +3,8 @@
 # UAT exercises the production service topology and PostgreSQL TLS behavior, but
 # stays within a single Standard_D2s_v5 node. It is not an HA environment.
 
-# Dify 1.14.2 is staged here before dev and prod. These are chart 0.37.0's own
-# defaults, and they match dify 1.14.2's docker-compose.yaml exactly — we are
-# dropping the 1.12.1 override rather than introducing a new pairing.
-#
-# The pins live in this overlay rather than values.yaml so that a dev or prod
-# deploy run for an unrelated reason cannot pick up the new version by accident.
-# Promoting means moving this block into values.yaml, as a set: a plugin daemon
-# that does not match the API version returns 404 from the plugin endpoints.
-#
-# Held back for the initial UAT build so the first deploy inherits values.yaml's
-# matched 1.12.1 set and can take a restore of the dev database without also
-# running upgrade migrations. Uncomment as a set once dev parity is confirmed;
-# that is the 1.14.2 upgrade rehearsal (UPGRADE_DIFY.md).
-# image:
-#   api:
-#     tag: "1.14.2"
-#   web:
-#     tag: "1.14.2"
-#   sandbox:
-#     tag: "0.2.15"
-#   pluginDaemon:
-#     tag: "0.6.1-local"
+# Dify 1.14.2 image tags live in values.yaml (promoted). This overlay only
+# sizes resources and sets PGSSLMODE for the single-node UAT profile.
 
 # Resource requests are sized for the single Standard_D2s_v5, whose 1900m/5929Mi
 # allocatable is already ~930m/~994Mi committed to AKS system pods. That leaves

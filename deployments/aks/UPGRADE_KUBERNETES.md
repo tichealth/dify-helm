@@ -9,9 +9,9 @@ lets manual CLI work happen without ever causing a Terraform diff.
 
 | Env | Cluster | Pin (in `environments/*.tfvars`) | Reality |
 | --- | --- | --- | --- |
-| UAT | greenfield | `1.35` | Created at `1.35`. Bump pin only when you're about to upgrade. |
-| Dev | `dify-aks-9764` (`dify-rg-9764`) | `1.35` | Manually upgraded via CLI to match; Terraform ignores drift. |
-| Prod | `dify-prod-lite-aks-b440` (`rg-cme-prod`) | `1.35` | Manually upgraded via CLI to match; Terraform ignores drift. |
+| UAT | `dify-uat-aks-1df2` (`dify-uat-rg-1df2`) | `1.35.6` | Created/running at `1.35.6`. Bump pin only when you're about to upgrade. |
+| Dev | `dify-aks-9764` (`dify-rg-9764`) | `1.35.6` | Manually upgraded via CLI to match; Terraform ignores drift. |
+| Prod | `dify-prod-lite-aks-b440` (`rg-cme-prod`) | `1.35` | Still on older minors; bump pin when Prod is about to upgrade. |
 
 **Workflow when you want to move to a new minor** (e.g. `1.35` → `1.36`):
 

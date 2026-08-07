@@ -12,7 +12,7 @@ resource_group_name = "" # terraform-managed RG: dify-rg-9764
 # (see UPGRADE_KUBERNETES.md). Bump this pin after Dev is manually upgraded.
 node_count            = 1
 vm_size               = "Standard_D2s_v5"
-kubernetes_version    = "1.35"
+kubernetes_version    = "1.35.6"
 enable_spot_node_pool = false
 
 # Dify blob container name (account/key from TF_VAR_* in CI)

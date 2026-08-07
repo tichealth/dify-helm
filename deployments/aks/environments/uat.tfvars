@@ -13,7 +13,7 @@ resource_group_name = ""
 # upgrades are manual via `az aks upgrade` (see UPGRADE_KUBERNETES.md).
 node_count            = 1
 vm_size               = "Standard_D2s_v5"
-kubernetes_version    = "1.35"
+kubernetes_version    = "1.35.6"
 enable_spot_node_pool = false
 
 # The account/key are supplied separately; this name is retained for future
