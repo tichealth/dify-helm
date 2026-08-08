@@ -407,8 +407,13 @@ if is_plan; then
     exit 0
 fi
 
+# No --atomic here, unlike Qdrant above. The API runs Alembic migrations on
+# startup, and Helm cannot undo those: an auto-rollback restores older image
+# tags against an already-migrated schema, and the older API then refuses to
+# boot on an alembic revision it doesn't know. --wait still fails the job on a
+# bad rollout; it just leaves the release where a human can look at it.
 helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" "${DIFY_ARGS[@]}" \
-    --create-namespace --atomic --wait --timeout 45m
+    --create-namespace --wait --timeout 15m
 echo -e "${GREEN}✓ Dify deployed${NC}\n"
 
 kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true

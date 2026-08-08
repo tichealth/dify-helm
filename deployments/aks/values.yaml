@@ -42,11 +42,24 @@ image:
     tag: "0.6.1-local"
     pullPolicy: IfNotPresent
 
+# Rolling updates on this single 2 vCPU node cannot fit a new pod alongside the
+# old one -- the node sits near 100% of allocatable CPU requests, so the default
+# maxSurge=1 leaves the replacement pod Pending forever and the Helm upgrade
+# times out. Every Dify workload below therefore terminates its old pod before
+# creating the new one. Each is a single replica anyway, so surge bought nothing;
+# the cost is a short gap per component during a deploy. Remove these once the
+# node has headroom for one extra pod.
+
 # API Configuration
 # CPU share: requests only, no CPU limit. 100m request for scheduling.
 api:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "512Mi"
@@ -103,6 +116,11 @@ api:
 worker:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "256Mi"
@@ -115,6 +133,11 @@ worker:
 beat:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "256Mi"
@@ -127,6 +150,11 @@ beat:
 web:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "512Mi"
@@ -139,6 +167,11 @@ web:
 sandbox:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   auth:
     apiKey: "dify-sandbox"
   resources:
@@ -153,6 +186,11 @@ sandbox:
 ssrfProxy:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "128Mi"
@@ -165,6 +203,11 @@ ssrfProxy:
 pluginDaemon:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   auth:
     serverKey: "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
     difyApiKey: "QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1"
@@ -189,6 +232,11 @@ pluginDaemon:
 proxy:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "64Mi"
