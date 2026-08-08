@@ -13,6 +13,15 @@ resource "azurerm_kubernetes_cluster" "aks" {
     vm_size                     = var.vm_size
     orchestrator_version        = var.kubernetes_version
     temporary_name_for_rotation = "systemtemp"
+
+    # Terraform owns these; do not set them with `az aks nodepool update`.
+    # Clearing drain_timeout_in_minutes (non-zero -> 0) replaces the entire
+    # cluster in azurerm, so config must always carry the live value.
+    upgrade_settings {
+      max_surge                     = "1"
+      drain_timeout_in_minutes      = 30
+      node_soak_duration_in_minutes = 5
+    }
   }
 
   identity {

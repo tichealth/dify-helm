@@ -54,15 +54,23 @@ and record the current chart/image versions before every hop.
 TARGET=1.34.9   # or whatever `az aks get-upgrades` currently offers
 POOL=system     # or whichever node pool holds the workloads
 
-# Small surge so AKS can bring up a replacement node before draining the old one.
-# Requires enough regional quota for one temporary node.
-az aks nodepool update -g "$RG" --cluster-name "$AKS" --name "$POOL" \
-  --max-surge 1 --drain-timeout 30 --node-soak-duration 5
-
 az aks upgrade -g "$RG" -n "$AKS" --kubernetes-version "$TARGET" --yes
 ```
 
 Repeat with the next minor. Do not skip.
+
+### Surge settings are Terraform's, not yours
+
+A small surge lets AKS bring up a replacement node before draining the old one.
+`default_node_pool.upgrade_settings` in `modules/aks/main.tf` already sets
+`max_surge = 1`, `drain_timeout_in_minutes = 30`, and
+`node_soak_duration_in_minutes = 5`, so there is nothing to do here.
+
+**Do not run `az aks nodepool update --max-surge/--drain-timeout/--node-soak-duration`.**
+Change the Terraform values and apply instead. A CLI-set drain timeout that
+Terraform doesn't know about makes the next plan try to clear it, and azurerm
+turns that into a **destroy-and-recreate of the whole cluster** (the AKS API has
+no way to unset the field). To change surge behaviour, edit the module and apply.
 
 ## Downtime expectation (be honest)
 

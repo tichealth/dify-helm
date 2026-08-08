@@ -113,13 +113,21 @@ resource "azurerm_private_dns_zone_virtual_network_link" "postgres" {
   tags                  = var.tags
 }
 
+# Counts below use vars only (not aks_node_resource_group or local.aks_vnet_id)
+# so Terraform can evaluate them at plan time. Those derive from the AKS cluster
+# and are unknown whenever it is being created or replaced, which makes any
+# count referencing them fail with "Invalid count argument".
+locals {
+  peer_aks_postgres = var.use_azure_postgres && var.create_vnet_for_postgres
+}
+
 data "azurerm_resource_group" "aks_node" {
-  count = var.use_azure_postgres && var.create_vnet_for_postgres && var.aks_node_resource_group != null ? 1 : 0
+  count = local.peer_aks_postgres ? 1 : 0
   name  = var.aks_node_resource_group
 }
 
 data "azurerm_resources" "aks_vnets" {
-  count               = var.use_azure_postgres && var.create_vnet_for_postgres && var.aks_node_resource_group != null ? 1 : 0
+  count               = local.peer_aks_postgres ? 1 : 0
   resource_group_name = data.azurerm_resource_group.aks_node[0].name
   type                = "Microsoft.Network/virtualNetworks"
 }
@@ -130,7 +138,7 @@ locals {
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "aks" {
-  count                 = var.use_azure_postgres && var.create_vnet_for_postgres && local.aks_vnet_id != null ? 1 : 0
+  count                 = local.peer_aks_postgres ? 1 : 0
   name                  = "${var.name_prefix}-aks-dns-link"
   resource_group_name   = var.resource_group_name
   private_dns_zone_name = azurerm_private_dns_zone.postgres[0].name
@@ -142,7 +150,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "aks" {
 }
 
 resource "azurerm_virtual_network_peering" "postgres_to_aks" {
-  count                     = var.use_azure_postgres && var.create_vnet_for_postgres && local.aks_vnet_id != null ? 1 : 0
+  count                     = local.peer_aks_postgres ? 1 : 0
   name                      = "${var.name_prefix}-postgres-to-aks"
   resource_group_name       = var.resource_group_name
   virtual_network_name      = azurerm_virtual_network.postgres[0].name
@@ -155,7 +163,7 @@ resource "azurerm_virtual_network_peering" "postgres_to_aks" {
 }
 
 resource "azurerm_virtual_network_peering" "aks_to_postgres" {
-  count                     = var.use_azure_postgres && var.create_vnet_for_postgres && local.aks_vnet_id != null ? 1 : 0
+  count                     = local.peer_aks_postgres ? 1 : 0
   name                      = "${var.name_prefix}-aks-to-postgres"
   resource_group_name       = data.azurerm_resource_group.aks_node[0].name
   virtual_network_name      = local.aks_vnet_name
