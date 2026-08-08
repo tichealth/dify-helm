@@ -133,11 +133,8 @@ worker:
 beat:
   enabled: true
   replicas: 1
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
+  # No updateStrategy override: the chart sets Recreate, which a singleton
+  # scheduler needs. Two beats at once would double every periodic task.
   resources:
     requests:
       memory: "256Mi"

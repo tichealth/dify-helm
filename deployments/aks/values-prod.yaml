@@ -18,9 +18,27 @@
 # the connection count cheap; the real ceiling in practice becomes the LLM
 # provider rate limit and the Postgres connection pool, not CPU.
 
+# Restore surge-based rollouts, which values.yaml turns off.
+#
+# The base file sets maxSurge=0 because dev and UAT each run one 2 vCPU node at
+# ~95% of allocatable CPU requests, where a surged pod can never be scheduled
+# and the rollout deadlocks. Prod has room -- lite-prod's D4s_v5 sits near 45%
+# -- so it can start the replacement before retiring the old pod and avoid a
+# gap. Several of these are single-replica even here, so inheriting maxSurge=0
+# would put a short user-visible outage in every prod deploy.
+#
+# beat is deliberately absent: the chart gives it Recreate, and a singleton
+# scheduler must not run two pods at once.
+_prodRollout: &prodRollout
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 25%
+
 api:
   # 2 replicas: HA across nodes on prod-full; still schedulable on lite-prod's single node.
   replicas: 2
+  updateStrategy: *prodRollout
   resources:
     requests:
       cpu: "500m"
@@ -41,9 +59,21 @@ api:
 # Async task workers (celery) also get more headroom in prod.
 worker:
   replicas: 2
+  updateStrategy: *prodRollout
   resources:
     requests:
       cpu: "250m"
       memory: "512Mi"
     limits:
       memory: "1536Mi"
+
+web:
+  updateStrategy: *prodRollout
+sandbox:
+  updateStrategy: *prodRollout
+proxy:
+  updateStrategy: *prodRollout
+ssrfProxy:
+  updateStrategy: *prodRollout
+pluginDaemon:
+  updateStrategy: *prodRollout
