@@ -25,6 +25,8 @@ INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.15.1}"
 # unsafe direct upgrade (or downgrade) across multiple cert-manager minors.
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-}"
 QDRANT_CHART_VERSION="${QDRANT_CHART_VERSION:-}"
+DATADOG_OPERATOR_CHART_VERSION="${DATADOG_OPERATOR_CHART_VERSION:-2.25.1}"
+DATADOG_NAMESPACE="datadog"
 NAMESPACE="dify"
 RELEASE_NAME="dify"
 
@@ -190,6 +192,7 @@ helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL"           >/dev/null 2>&1 || tr
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
 helm repo add jetstack      https://charts.jetstack.io     >/dev/null 2>&1 || true
 helm repo add qdrant        https://qdrant.to/helm          >/dev/null 2>&1 || true
+helm repo add datadog       https://helm.datadoghq.com      >/dev/null 2>&1 || true
 helm repo update >/dev/null
 echo -e "${GREEN}✓ Helm repos ready${NC}\n"
 
@@ -397,6 +400,61 @@ if [ "${INSTALL_QDRANT:-false}" = "true" ]; then
             --create-namespace --atomic --wait --timeout 15m
         echo -e "${GREEN}✓ Qdrant deployed${NC}"
     fi
+fi
+
+# ----- Step 10b: Datadog (optional) ------------------------------------------
+# Node-level container log collection. Installs only when DATADOG_API_KEY is set,
+# the same optional-feature pattern PHOENIX_OTLP_ENDPOINT uses, so an environment
+# without the secret is left completely untouched. Runs before the Dify upgrade so
+# the Agent is already tailing when Dify's pods roll.
+#
+# `--db` exits before this point, so no scope guard is needed here.
+DATADOG_API_KEY="${DATADOG_API_KEY:-$(get_secret DATADOG_API_KEY datadog_api_key)}"
+
+case "$INGRESS_HOST" in
+    *uat*)  DD_ENV="uat" ;;
+    *prod*) DD_ENV="prod" ;;
+    *)      DD_ENV="dev" ;;
+esac
+DD_MANIFEST="$SCRIPT_DIR/datadog/datadog-agent-${DD_ENV}.yaml"
+
+if [[ -z "$DATADOG_API_KEY" ]]; then
+    echo -e "${YELLOW}Step 10b: Datadog skipped (DATADOG_API_KEY not set)${NC}\n"
+elif [[ ! -f "$DD_MANIFEST" ]]; then
+    # Prod has no manifest on purpose: it is promoted only after UAT is validated.
+    echo -e "${YELLOW}Step 10b: Datadog skipped (no datadog-agent-${DD_ENV}.yaml)${NC}\n"
+elif is_plan; then
+    echo -e "${YELLOW}Step 10b (plan): Datadog ${DD_ENV}${NC}"
+    helm diff upgrade datadog-operator datadog/datadog-operator \
+        --namespace "$DATADOG_NAMESPACE" \
+        --version "$DATADOG_OPERATOR_CHART_VERSION" \
+        -f "$SCRIPT_DIR/datadog/operator-values.yaml" \
+        --allow-unreleased > helm-diff-datadog.log || true
+    echo "DatadogAgent manifest that would be applied: $DD_MANIFEST"
+else
+    echo -e "${YELLOW}Step 10b: Datadog ${DD_ENV}${NC}"
+    kubectl create namespace "$DATADOG_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+    # --from-file, not --from-literal: a literal puts the API key in the process
+    # arguments, where any process listing on the runner can read it.
+    DD_KEY_FILE="$SECRETS_DIR/api-key"
+    printf '%s' "$DATADOG_API_KEY" > "$DD_KEY_FILE"
+    kubectl -n "$DATADOG_NAMESPACE" create secret generic datadog-secret \
+        --from-file="api-key=$DD_KEY_FILE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+    helm upgrade --install datadog-operator datadog/datadog-operator \
+        --namespace "$DATADOG_NAMESPACE" \
+        --version "$DATADOG_OPERATOR_CHART_VERSION" \
+        -f "$SCRIPT_DIR/datadog/operator-values.yaml" \
+        --create-namespace --wait --timeout 10m
+
+    # The CR cannot be applied until the Operator's CRD is established.
+    kubectl wait --for=condition=established --timeout=120s \
+        crd/datadogagents.datadoghq.com
+
+    kubectl apply -f "$DD_MANIFEST"
+    echo -e "${GREEN}✓ Datadog deployed (${DD_ENV})${NC}\n"
 fi
 
 if is_plan; then

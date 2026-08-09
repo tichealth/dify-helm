@@ -39,6 +39,7 @@ the workflow derives them from `AZURE_CREDENTIALS` at runtime.
 | `PLUGIN_DAEMON_SERVER_KEY` | Secret | UAT only | Unique plugin server key |
 | `PLUGIN_DAEMON_DIFY_API_KEY` | Secret | UAT only | Unique plugin-to-Dify key |
 | `PHOENIX_OTLP_ENDPOINT` | Variable | Optional | OTLP HTTP base URL; omit to disable |
+| `DATADOG_API_KEY` | Secret | Optional | Datadog container log collection; omit to disable |
 
 ## How to create them (per environment)
 
@@ -132,6 +133,20 @@ Never commit the script output or paste it into tracked tfvars.
 Set only if this environment should export OTLP traces (e.g.
 `https://<phoenix-host>/v1/traces`). Leave unset to disable.
 
+### E. Optional Datadog log collection
+
+`DATADOG_API_KEY` is the API key from **Organization Settings -> API Keys** in the
+Datadog org (site `ap2.datadoghq.com`). Setting it is what turns the Datadog step
+on; leaving it unset means the deploy skips Datadog and the cluster is untouched.
+
+The same key can be used for `dev` and `uat` — it identifies the org, not the
+cluster. Environments are kept apart by `clusterName` and the `env` tag in
+`datadog/datadog-agent-<env>.yaml`, not by the key. There is no manifest for prod
+yet, so setting the secret on `prod` does nothing until one is added.
+
+See [datadog/README.md](./datadog/README.md) for what is collected and the
+resource budget, which is tight on the single-node Dev and UAT clusters.
+
 ## Rotating secrets on a live environment
 
 Creating a new environment is safe. Changing these on a **running** environment
@@ -146,6 +161,7 @@ is not — read this before touching Dev or Prod.
 | `PLUGIN_DAEMON_*` | Plugin daemon and API must be redeployed together, otherwise plugins fail to authenticate. |
 | `AZURE_BLOB_ACCOUNT_KEY` | Safe. Rotate whenever the storage key is rotated; affects Terraform state access only. |
 | `AZURE_CREDENTIALS` | Safe. Rotate on SP secret expiry. |
+| `DATADOG_API_KEY` | Safe. Log shipping stops until the next deploy recreates the `datadog-secret`; nothing in Dify is affected. |
 
 Rotate one secret at a time, during a maintenance window, and redeploy with
 `deploy_mode=all` so every component picks up the new value together.
@@ -195,6 +211,9 @@ export TF_VAR_qdrant_api_key="<value>"
 # UAT only
 export PLUGIN_DAEMON_SERVER_KEY="<value>"
 export PLUGIN_DAEMON_DIFY_API_KEY="<value>"
+
+# Optional; unset means the deploy skips Datadog
+export DATADOG_API_KEY="<value>"
 ```
 
 Then select the matching profile and run `./deploy.sh`. See

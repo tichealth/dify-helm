@@ -71,6 +71,7 @@ jobs:
           plugin_daemon_server_key: ${{ secrets.PLUGIN_DAEMON_SERVER_KEY }}
           plugin_daemon_dify_api_key: ${{ secrets.PLUGIN_DAEMON_DIFY_API_KEY }}
           phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
+          datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
 
       - name: Validate lock ID
         run: |
@@ -129,6 +130,7 @@ jobs:
           plugin_daemon_server_key: ${{ secrets.PLUGIN_DAEMON_SERVER_KEY }}
           plugin_daemon_dify_api_key: ${{ secrets.PLUGIN_DAEMON_DIFY_API_KEY }}
           phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
+          datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
 
       - name: Plan deploy
         if: inputs.action == 'deploy'
@@ -180,6 +182,7 @@ jobs:
           plugin_daemon_server_key: ${{ secrets.PLUGIN_DAEMON_SERVER_KEY }}
           plugin_daemon_dify_api_key: ${{ secrets.PLUGIN_DAEMON_DIFY_API_KEY }}
           phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
+          datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
 
       - name: Download plan artifacts
         uses: actions/download-artifact@v4

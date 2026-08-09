@@ -1,0 +1,63 @@
+# Datadog Agent for the UAT AKS cluster (dify-uat-aks-1df2).
+#
+# Identical to datadog-agent-dev.yaml apart from clusterName and the env tag. The
+# two files are kept separate rather than templated so that a promotion to UAT is a
+# reviewable diff rather than a variable substitution at deploy time.
+#
+# UAT holds ~348m of spare CPU requests and needed no resource trim, so this lands
+# with more headroom than Dev.
+#
+# No API key appears in this file. deploy.sh creates the `datadog-secret` Secret
+# from the DATADOG_API_KEY GitHub Environment secret before applying this manifest.
+apiVersion: datadoghq.com/v2alpha1
+kind: DatadogAgent
+metadata:
+  name: datadog
+  namespace: datadog
+spec:
+  global:
+    clusterName: "dify-uat-aks"
+    site: "ap2.datadoghq.com"
+    tags:
+      - "env:uat"
+    credentials:
+      apiSecret:
+        secretName: "datadog-secret"
+        keyName: "api-key"
+
+  features:
+    logCollection:
+      enabled: true
+      containerCollectAll: true
+
+    clusterChecks:
+      enabled: false
+    orchestratorExplorer:
+      enabled: false
+    apm:
+      enabled: false
+
+  override:
+    nodeAgent:
+      containers:
+        agent:
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
+
+    clusterAgent:
+      replicas: 1
+      containers:
+        cluster-agent:
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
+          env:
+            - name: "DD_ADMISSION_CONTROLLER_ADD_AKS_SELECTORS"
+              value: "true"

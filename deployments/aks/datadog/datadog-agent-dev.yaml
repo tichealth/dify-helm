@@ -1,0 +1,87 @@
+# Datadog Agent for the Dev AKS cluster (dify-aks-9764).
+#
+# Scope: container log collection only. See README.md in this directory for the
+# reasoning, the resource budget, and what is deliberately switched off.
+#
+# No API key appears in this file. deploy.sh creates the `datadog-secret` Secret
+# from the DATADOG_API_KEY GitHub Environment secret before applying this manifest.
+apiVersion: datadoghq.com/v2alpha1
+kind: DatadogAgent
+metadata:
+  name: datadog
+  namespace: datadog
+spec:
+  global:
+    # Must be unique per cluster. Dev and UAT share project_name "dify", sit in the
+    # same subscription, and report to the same Datadog org, so a shared value
+    # would merge both clusters into one host map and make env-scoped queries
+    # meaningless.
+    clusterName: "dify-dev-aks"
+    site: "ap2.datadoghq.com"
+    tags:
+      - "env:dev"
+    credentials:
+      apiSecret:
+        secretName: "datadog-secret"
+        keyName: "api-key"
+
+  features:
+    # The node Agent tails the container runtime logs already written under
+    # /var/log/pods, which kubelet rotates on its own. Nothing needs a PVC, and
+    # Dify must NOT be given LOG_FILE -- it always logs to stdout as well, so a
+    # file handler only duplicates every line.
+    logCollection:
+      enabled: true
+      containerCollectAll: true
+
+    # Neither of the next two collects a single application log, and
+    # orchestratorExplorer adds a whole process-agent container to the DaemonSet.
+    # On a single 2 vCPU node that overhead is the difference between fitting and
+    # not fitting. Enable them deliberately later, with the CPU budgeted, if the
+    # Kubernetes resource views are wanted.
+    clusterChecks:
+      enabled: false
+    orchestratorExplorer:
+      enabled: false
+
+    # Dify already exports OTLP traces to self-hosted Phoenix, which is what
+    # produces LLM/chain/retriever spans. Datadog APM would duplicate the
+    # transport and export prompt and completion content to a third party, so it
+    # stays off until that has been reviewed.
+    apm:
+      enabled: false
+
+  override:
+    nodeAgent:
+      containers:
+        agent:
+          # No CPU limit, matching the convention in values.yaml: memory limits are
+          # kept because memory is incompressible, CPU limits are omitted so pods
+          # can burst into idle node capacity. Datadog's advice to pin an explicit
+          # CPU limit applies to high-core-count nodes, where the Go runtime sizes
+          # itself to the host CPU count; on 2 vCPU that does not bite.
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
+
+    clusterAgent:
+      replicas: 1
+      containers:
+        cluster-agent:
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
+          env:
+            # Required on AKS whenever the admission controller is active, and it
+            # is active by default. Without this the webhook errors while
+            # reconciling against AKS-managed pods. Datadog includes it in every
+            # AKS example regardless of which features are enabled, so it stays
+            # even though we are only collecting logs.
+            - name: "DD_ADMISSION_CONTROLLER_ADD_AKS_SELECTORS"
+              value: "true"

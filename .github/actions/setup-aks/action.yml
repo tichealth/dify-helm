@@ -31,6 +31,9 @@ inputs:
   phoenix_otlp_endpoint:
     required: false
     default: ''
+  datadog_api_key:
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -77,6 +80,7 @@ runs:
         echo "PLUGIN_DAEMON_SERVER_KEY=${{ inputs.plugin_daemon_server_key }}"          >> "$GITHUB_ENV"
         echo "PLUGIN_DAEMON_DIFY_API_KEY=${{ inputs.plugin_daemon_dify_api_key }}"      >> "$GITHUB_ENV"
         echo "PHOENIX_OTLP_ENDPOINT=${{ inputs.phoenix_otlp_endpoint }}"                >> "$GITHUB_ENV"
+        echo "DATADOG_API_KEY=${{ inputs.datadog_api_key }}"                            >> "$GITHUB_ENV"
 
         case "${{ inputs.environment }}" in
           lite-prod|prod-full) echo "DIFY_INGRESS_HOST=dify-prod.tichealth.com.au" >> "$GITHUB_ENV" ;;
