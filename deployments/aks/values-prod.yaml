@@ -27,8 +27,8 @@
 # gap. Several of these are single-replica even here, so inheriting maxSurge=0
 # would put a short user-visible outage in every prod deploy.
 #
-# beat is deliberately absent: the chart gives it Recreate, and a singleton
-# scheduler must not run two pods at once.
+# beat deliberately does not take this anchor: the chart gives it Recreate, and a
+# singleton scheduler must not run two pods at once.
 _prodRollout: &prodRollout
   type: RollingUpdate
   rollingUpdate:
@@ -67,13 +67,76 @@ worker:
     limits:
       memory: "1536Mi"
 
+# The components below used to inherit their resources from values.yaml. They are
+# pinned here instead, the same way values-uat.yaml pins its own, because the base
+# file is tuned against dev's idle single 2 vCPU node -- a trim measured there
+# would otherwise silently re-size prod.
+#
+# Where a dev measurement raised a floor (beat, pluginDaemon) prod takes the higher
+# figure: steady-state memory is a property of the component, not of the node it
+# runs on. Where a measurement lowered one (web, sandbox) prod keeps its own, since
+# an idle dev reading understates prod load and lite-prod's ~13GiB allocatable has
+# room to spare. Net effect against the previously inherited values is +448Mi of
+# memory requests and no CPU change.
+#
+# proxy is the one component still inheriting its resources; it has never been
+# tuned per environment.
+
+# No updateStrategy: beat keeps the chart's Recreate, as above.
+beat:
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "448Mi"   # dev measured 333Mi; the old 256Mi request sat below steady state
+    limits:
+      memory: "512Mi"
+
 web:
   updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "125m"
+      memory: "512Mi"
+    limits:
+      memory: "2Gi"
+
 sandbox:
   updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "125m"
+      memory: "512Mi"
+    limits:
+      memory: "1Gi"
+
 proxy:
   updateStrategy: *prodRollout
+
 ssrfProxy:
   updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      memory: "512Mi"
+
+# Grows with every installed plugin, so the request tracks the measured floor
+# rather than the old flat 512Mi. Re-check as the prod plugin set diverges from dev.
 pluginDaemon:
   updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "768Mi"   # dev measured 679Mi
+    limits:
+      memory: "2048Mi"
+
+redis:
+  master:
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"

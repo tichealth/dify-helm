@@ -2,9 +2,24 @@
 # Using dify-helm from https://borispolonsky.github.io/dify-helm
 # Configured for Azure Kubernetes Service
 #
-# CPU: D4s_v5 × 0.5 for D2ads_v6 (2 vCPU). CPU limits removed – pods share node CPU.
-# Memory limits kept. CPU requests used for SCHEDULING only (pods can burst beyond requests at runtime).
-# Total CPU requests ~1000m (50% of 2 vCPU) ensures all pods can schedule; runtime usage can exceed this.
+# Single Standard_D2s_v5 (2 vCPU), 1900m/5929Mi allocatable, of which AKS system
+# pods already hold ~977m/~994Mi.
+#
+# CPU limits are removed deliberately, so a CPU request is only a scheduling
+# reservation plus a proportional-share weight under saturation -- it never caps a
+# pod at runtime. Measured draw across the whole namespace was 79m against 775m
+# reserved, so the requests below are sized down to ~500m to leave room for the
+# node-level monitoring agent without changing what any pod can actually use.
+#
+# Memory is the opposite: it is incompressible, and a pod above its request is the
+# first thing kubelet evicts under node pressure. Every memory request below is
+# therefore set at or above measured steady state, which moves worker, beat and
+# pluginDaemon *up*. Memory limits are unchanged and remain the real protection
+# against a runaway pod.
+#
+# Figures annotated "measured" came from `kubectl top pods -n dify` on the dev
+# cluster. Re-measure before trimming further, and note these are idle-ish
+# readings -- memory is what grows under load, not CPU.
 
 # Secrets (appSecretKey, postgres, redis, qdrant) are set by deploy.sh from TF_VAR_* or terraform.tfvars — not stored here
 global:
@@ -42,13 +57,17 @@ image:
     tag: "0.6.1-local"
     pullPolicy: IfNotPresent
 
-# Rolling updates on this single 2 vCPU node cannot fit a new pod alongside the
-# old one -- the node sits near 100% of allocatable CPU requests, so the default
-# maxSurge=1 leaves the replacement pod Pending forever and the Helm upgrade
-# times out. Every Dify workload below therefore terminates its old pod before
-# creating the new one. Each is a single replica anyway, so surge bought nothing;
-# the cost is a short gap per component during a deploy. Remove these once the
-# node has headroom for one extra pod.
+# Rolling updates on this single 2 vCPU node could not fit a new pod alongside the
+# old one -- the node sat at 93% of allocatable CPU requests, so the default
+# maxSurge=1 left the replacement pod Pending forever and the Helm upgrade timed
+# out. Every Dify workload below therefore terminates its old pod before creating
+# the new one. Each is a single replica anyway, so surge bought nothing; the cost
+# is a short gap per component during a deploy.
+#
+# The CPU trim above takes the node to roughly 79% of allocatable requests, which
+# is finally more headroom than the largest single pod request. These overrides can
+# therefore be removed -- but do that as its own change, once the trim has been
+# observed to hold, rather than bundling it in here.
 
 # API Configuration
 # CPU share: requests only, no CPU limit. 100m request for scheduling.
@@ -123,13 +142,15 @@ worker:
       maxUnavailable: 1
   resources:
     requests:
-      memory: "256Mi"
+      memory: "448Mi"   # measured 360Mi, above the previous 256Mi request
       cpu: "100m"
     limits:
       memory: "1Gi"
 
 # Worker Beat Configuration
-# CPU share: no CPU limit. 100m request.
+# CPU share: no CPU limit. Beat only emits periodic tasks, so it needs almost no
+# CPU (measured 1m). Its memory request goes the other way: measured 333Mi against
+# the previous 256Mi request made it the first candidate for eviction.
 beat:
   enabled: true
   replicas: 1
@@ -137,8 +158,8 @@ beat:
   # scheduler needs. Two beats at once would double every periodic task.
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "100m"
+      memory: "448Mi"   # measured 333Mi
+      cpu: "25m"
     limits:
       memory: "512Mi"
 
@@ -154,8 +175,8 @@ web:
       maxUnavailable: 1
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "125m"
+      memory: "384Mi"   # measured 243Mi
+      cpu: "100m"
     limits:
       memory: "2Gi"
 
@@ -173,8 +194,8 @@ sandbox:
     apiKey: "dify-sandbox"
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "125m"
+      memory: "192Mi"   # measured 109Mi
+      cpu: "50m"
     limits:
       memory: "1Gi"
 
@@ -190,13 +211,16 @@ ssrfProxy:
       maxUnavailable: 1
   resources:
     requests:
-      memory: "128Mi"
-      cpu: "50m"
+      memory: "128Mi"   # measured 19Mi
+      cpu: "25m"
     limits:
       memory: "512Mi"
 
 # Plugin Daemon Configuration
-# CPU share: no CPU limit. 100m request so it fits on 2 vCPU node with other Dify pods.
+# CPU share: no CPU limit; measured 3m idle.
+# This is the largest memory consumer in the namespace and it grows with every
+# installed plugin -- measured 679Mi against a 512Mi request, so the request is
+# raised rather than trimmed. Watch this one as plugins are added.
 pluginDaemon:
   enabled: true
   replicas: 1
@@ -213,8 +237,8 @@ pluginDaemon:
       value: "disable"  # Required by plugin-daemon (oneof=disable require); set "require" when enabling SSL
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "100m"
+      memory: "768Mi"   # measured 679Mi
+      cpu: "50m"
     limits:
       memory: "2048Mi"
   persistence:
@@ -301,8 +325,8 @@ redis:
       size: 8Gi
     resources:
       requests:
-        memory: "256Mi"
-        cpu: "50m"
+        memory: "256Mi"   # measured 210Mi; do not trim, it sits close to the request
+        cpu: "25m"
       limits:
         memory: "512Mi"
   replica:
