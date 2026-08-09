@@ -64,10 +64,12 @@ image:
 # the new one. Each is a single replica anyway, so surge bought nothing; the cost
 # is a short gap per component during a deploy.
 #
-# The CPU trim above takes the node to roughly 79% of allocatable requests, which
-# is finally more headroom than the largest single pod request. These overrides can
-# therefore be removed -- but do that as its own change, once the trim has been
-# observed to hold, rather than bundling it in here.
+# The CPU trim above took the node from 93% to 79% of allocatable requests, which
+# frees 398m. That is not an invitation to remove these overrides. The Datadog
+# agents reserve 300m of it, taking the node back to ~95% with 98m spare -- 2m short
+# of api's own 100m request, so a surged api pod could never be scheduled. Memory is
+# tighter still: ~612Mi spare against pluginDaemon's 768Mi request. maxSurge stays 0
+# until the node itself grows.
 
 # API Configuration
 # CPU share: requests only, no CPU limit. 100m request for scheduling.
@@ -192,6 +194,16 @@ sandbox:
       maxUnavailable: 1
   auth:
     apiKey: "dify-sandbox"
+  # The chart's sandbox liveness probe starts at initialDelaySeconds 1 with
+  # periodSeconds 5 and failureThreshold 2, so the container has ~11s to bind
+  # :8194 or kubelet kills it -- and the chart ships no startup probe. That budget
+  # is not survivable during a rollout, when every Dify pod restarts at once and
+  # sandbox holds a small proportional CPU share: it was killed once on the first
+  # deploy after the CPU trim (exit 137, "failed liveness probe", not OOM) and only
+  # came up on the retry. The startup probe gives ~25s and suspends liveness until
+  # it passes, which fixes the race without inflating the CPU request.
+  startupProbe:
+    enabled: true
   resources:
     requests:
       memory: "192Mi"   # measured 109Mi
