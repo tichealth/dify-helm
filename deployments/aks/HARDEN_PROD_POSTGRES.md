@@ -6,7 +6,7 @@
 to
 > *"prod PG accepts TLS-only connections from AKS outbound IPs"*
 
-**Scope:** P0 (enforce TLS) + P1 (restrict firewall) from `SECURITY-TODO.md`.
+**Scope:** P0 (enforce TLS) + P1 (restrict firewall) from [TODO.md](./TODO.md).
 P2/P3/P4 are out of scope.
 
 **Maintenance window:** not required. Expect ~30–60s of failed requests during
@@ -317,12 +317,12 @@ because `deploy.sh` already injects `PGSSLMODE=require`.
       `https://dify-prod.tichealth.com.au/`
 - [ ] Phoenix dev Web UI still reachable
 - [ ] Admin-laptop firewall rule from 2.3 removed (if you added one)
-- [ ] Update `SECURITY-TODO.md` — tick the P0 and P1 boxes
+- [ ] Update [TODO.md](./TODO.md) — tick the P0 and P1 boxes
 
 ## After this is done
 
 Prod PG goes from "internet-reachable, plaintext-allowed" to "TLS-only from
-AKS". That kills the most exploitable findings in `SECURITY-TODO.md`.
+AKS". That kills the most exploitable findings in [TODO.md](./TODO.md).
 
 P2 (private endpoint), P3 (workload identity), and P4 (password rotation)
 can each be done independently when there's appetite. No urgency.

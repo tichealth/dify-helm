@@ -108,6 +108,12 @@ variable "postgres_storage_tier" {
   description = "Storage tier (e.g. P4, P15, P30); null = Azure default"
 }
 
+variable "postgres_backup_retention_days" {
+  description = "Point-in-time restore retention in days"
+  type        = number
+  default     = 7
+}
+
 variable "postgres_max_connections" {
   type        = number
   default     = null

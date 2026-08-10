@@ -1,6 +1,6 @@
-# Full production - 3 nodes, larger DB (~930-1040 AUD/mo estimated)
+# Full production - 3 nodes, larger DB.
 # Use when you want node-level HA and room to scale out.
-# See LITE_PROD_VS_PROD.md for cost and scalability notes.
+# See DEPLOY_PROD.md for cost and scalability notes; COSTS.md for pricing.
 #
 # Secrets (passwords, keys) are NOT in this file. Set them via:
 # - GitHub Actions: workflow passes TF_VAR_* from GitHub Secrets.
@@ -11,9 +11,13 @@ location     = "australiaeast"
 
 resource_group_name = "rg-cme-prod"
 
-# AKS - 3 nodes for resilience
+# AKS - 3 nodes for resilience.
+# kubernetes_version is applied only at cluster creation; Terraform ignores
+# post-create drift, so manual `az aks upgrade` hops are the source of truth
+# (see UPGRADE_KUBERNETES.md).
 node_count            = 3
 vm_size               = "Standard_D4s_v5"
+kubernetes_version    = "1.35"
 enable_spot_node_pool = false
 
 # Azure Blob Storage (secrets via TF_VAR_* from GitHub Secrets in CI)

@@ -2,9 +2,24 @@
 # Using dify-helm from https://borispolonsky.github.io/dify-helm
 # Configured for Azure Kubernetes Service
 #
-# CPU: D4s_v5 × 0.5 for D2ads_v6 (2 vCPU). CPU limits removed – pods share node CPU.
-# Memory limits kept. CPU requests used for SCHEDULING only (pods can burst beyond requests at runtime).
-# Total CPU requests ~1000m (50% of 2 vCPU) ensures all pods can schedule; runtime usage can exceed this.
+# Single Standard_D2s_v5 (2 vCPU), 1900m/5929Mi allocatable, of which AKS system
+# pods already hold ~977m/~994Mi.
+#
+# CPU limits are removed deliberately, so a CPU request is only a scheduling
+# reservation plus a proportional-share weight under saturation -- it never caps a
+# pod at runtime. Measured draw across the whole namespace was 79m against 775m
+# reserved, so the requests below are sized down to ~500m to leave room for the
+# node-level monitoring agent without changing what any pod can actually use.
+#
+# Memory is the opposite: it is incompressible, and a pod above its request is the
+# first thing kubelet evicts under node pressure. Every memory request below is
+# therefore set at or above measured steady state, which moves worker, beat and
+# pluginDaemon *up*. Memory limits are unchanged and remain the real protection
+# against a runaway pod.
+#
+# Figures annotated "measured" came from `kubectl top pods -n dify` on the dev
+# cluster. Re-measure before trimming further, and note these are idle-ish
+# readings -- memory is what grows under load, not CPU.
 
 # Secrets (appSecretKey, postgres, redis, qdrant) are set by deploy.sh from TF_VAR_* or terraform.tfvars — not stored here
 global:
@@ -12,38 +27,60 @@ global:
   appSecretKey: "override-by-deploy-script"  # deploy.sh passes via --set-file from TF_VAR_dify_secret_key or dify_secret_key
   internalApiKey: ""
 
-# Image versions
+# Image versions — pairing from langgenius/dify@1.14.2 docker-compose.yaml.
+# Move as a set: plugin daemon must match the API or plugin endpoints 404.
 image:
   api:
     repository: langgenius/dify-api
-    tag: "1.12.1"
+    tag: "1.14.2"
     pullPolicy: IfNotPresent
   web:
     repository: langgenius/dify-web
-    tag: "1.12.1"
+    tag: "1.14.2"
     pullPolicy: IfNotPresent
   sandbox:
     repository: langgenius/dify-sandbox
-    tag: "0.2.12"
+    tag: "0.2.15"
     pullPolicy: IfNotPresent
   proxy:
     repository: nginx
-    tag: latest
+    # Digest captured from the healthy dev release on 2026-08-03. Pinning keeps
+    # replacement AKS nodes from silently pulling a different `latest` image.
+    tag: "latest@sha256:ec4ed8b5299e5e90694af7750eb6dffd2627317d30544d056b0371f8082f7bce"
     pullPolicy: IfNotPresent
   ssrfProxy:
     repository: ubuntu/squid
-    tag: latest
+    tag: "latest@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029"
     pullPolicy: IfNotPresent
   pluginDaemon:
     repository: langgenius/dify-plugin-daemon
-    tag: "0.5.3-local"
+    tag: "0.6.1-local"
     pullPolicy: IfNotPresent
+
+# Rolling updates on this single 2 vCPU node could not fit a new pod alongside the
+# old one -- the node sat at 93% of allocatable CPU requests, so the default
+# maxSurge=1 left the replacement pod Pending forever and the Helm upgrade timed
+# out. Every Dify workload below therefore terminates its old pod before creating
+# the new one. Each is a single replica anyway, so surge bought nothing; the cost
+# is a short gap per component during a deploy.
+#
+# The CPU trim above took the node from 93% to 79% of allocatable requests, which
+# frees 398m. That is not an invitation to remove these overrides. The Datadog
+# agents reserve 300m of it, taking the node back to ~95% with 98m spare -- 2m short
+# of api's own 100m request, so a surged api pod could never be scheduled. Memory is
+# tighter still: ~612Mi spare against pluginDaemon's 768Mi request. maxSurge stays 0
+# until the node itself grows.
 
 # API Configuration
 # CPU share: requests only, no CPU limit. 100m request for scheduling.
 api:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "512Mi"
@@ -100,22 +137,31 @@ api:
 worker:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
-      memory: "256Mi"
+      memory: "448Mi"   # measured 360Mi, above the previous 256Mi request
       cpu: "100m"
     limits:
       memory: "1Gi"
 
 # Worker Beat Configuration
-# CPU share: no CPU limit. 100m request.
+# CPU share: no CPU limit. Beat only emits periodic tasks, so it needs almost no
+# CPU (measured 1m). Its memory request goes the other way: measured 333Mi against
+# the previous 256Mi request made it the first candidate for eviction.
 beat:
   enabled: true
   replicas: 1
+  # No updateStrategy override: the chart sets Recreate, which a singleton
+  # scheduler needs. Two beats at once would double every periodic task.
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "100m"
+      memory: "448Mi"   # measured 333Mi
+      cpu: "25m"
     limits:
       memory: "512Mi"
 
@@ -124,10 +170,15 @@ beat:
 web:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "125m"
+      memory: "384Mi"   # measured 243Mi
+      cpu: "100m"
     limits:
       memory: "2Gi"
 
@@ -136,12 +187,27 @@ web:
 sandbox:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   auth:
     apiKey: "dify-sandbox"
+  # The chart's sandbox liveness probe starts at initialDelaySeconds 1 with
+  # periodSeconds 5 and failureThreshold 2, so the container has ~11s to bind
+  # :8194 or kubelet kills it -- and the chart ships no startup probe. That budget
+  # is not survivable during a rollout, when every Dify pod restarts at once and
+  # sandbox holds a small proportional CPU share: it was killed once on the first
+  # deploy after the CPU trim (exit 137, "failed liveness probe", not OOM) and only
+  # came up on the retry. The startup probe gives ~25s and suspends liveness until
+  # it passes, which fixes the race without inflating the CPU request.
+  startupProbe:
+    enabled: true
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "125m"
+      memory: "192Mi"   # measured 109Mi
+      cpu: "50m"
     limits:
       memory: "1Gi"
 
@@ -150,18 +216,31 @@ sandbox:
 ssrfProxy:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
-      memory: "128Mi"
-      cpu: "50m"
+      memory: "128Mi"   # measured 19Mi
+      cpu: "25m"
     limits:
       memory: "512Mi"
 
 # Plugin Daemon Configuration
-# CPU share: no CPU limit. 100m request so it fits on 2 vCPU node with other Dify pods.
+# CPU share: no CPU limit; measured 3m idle.
+# This is the largest memory consumer in the namespace and it grows with every
+# installed plugin -- measured 679Mi against a 512Mi request, so the request is
+# raised rather than trimmed. Watch this one as plugins are added.
 pluginDaemon:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   auth:
     serverKey: "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
     difyApiKey: "QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1"
@@ -170,8 +249,8 @@ pluginDaemon:
       value: "disable"  # Required by plugin-daemon (oneof=disable require); set "require" when enabling SSL
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "100m"
+      memory: "768Mi"   # measured 679Mi
+      cpu: "50m"
     limits:
       memory: "2048Mi"
   persistence:
@@ -186,6 +265,11 @@ pluginDaemon:
 proxy:
   enabled: true
   replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   resources:
     requests:
       memory: "64Mi"
@@ -200,7 +284,7 @@ service:
 
 # Ingress Configuration - Enable and configure
 # Host is overridden by deploy.sh from project_name in terraform.tfvars:
-#   prod (lite or full) -> dify-prod.tichealth.com.au; dev -> dify-dev; test -> dify-test
+#   prod (lite or full) -> dify-prod; dev -> dify-dev; UAT -> dify-uat
 ingress:
   enabled: true
   className: "nginx"
@@ -216,7 +300,7 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "75"
   hosts:
-    - host: dify-dev.tichealth.com.au  # default; overridden by deploy.sh for prod/test
+    - host: dify-dev.tichealth.com.au  # default; overridden by deploy.sh for Prod/UAT
       paths:
         - path: /
           pathType: Prefix
@@ -253,8 +337,8 @@ redis:
       size: 8Gi
     resources:
       requests:
-        memory: "256Mi"
-        cpu: "50m"
+        memory: "256Mi"   # measured 210Mi; do not trim, it sits close to the request
+        cpu: "25m"
       limits:
         memory: "512Mi"
   replica:

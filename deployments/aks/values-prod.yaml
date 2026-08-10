@@ -5,7 +5,7 @@
 # "*prod*" (i.e. lite-prod and prod-full). It only overrides what should differ
 # in production; everything else is inherited from values.yaml.
 #
-# Sizing rationale (see also LITE_PROD_VS_PROD.md):
+# Sizing rationale (see DEPLOY_PROD.md for profile choice, COSTS.md for pricing):
 #   - lite-prod : 1 x Standard_D4s_v5  = 4 vCPU / 16 GiB   (~3.8 vCPU / ~13 GiB allocatable)
 #   - prod-full : 3 x Standard_D4s_v5  = 12 vCPU / 48 GiB  (~11.5 vCPU / ~38 GiB allocatable)
 #
@@ -18,9 +18,27 @@
 # the connection count cheap; the real ceiling in practice becomes the LLM
 # provider rate limit and the Postgres connection pool, not CPU.
 
+# Restore surge-based rollouts, which values.yaml turns off.
+#
+# The base file sets maxSurge=0 because dev and UAT each run one 2 vCPU node at
+# ~95% of allocatable CPU requests, where a surged pod can never be scheduled
+# and the rollout deadlocks. Prod has room -- lite-prod's D4s_v5 sits near 45%
+# -- so it can start the replacement before retiring the old pod and avoid a
+# gap. Several of these are single-replica even here, so inheriting maxSurge=0
+# would put a short user-visible outage in every prod deploy.
+#
+# beat deliberately does not take this anchor: the chart gives it Recreate, and a
+# singleton scheduler must not run two pods at once.
+_prodRollout: &prodRollout
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 25%
+
 api:
   # 2 replicas: HA across nodes on prod-full; still schedulable on lite-prod's single node.
   replicas: 2
+  updateStrategy: *prodRollout
   resources:
     requests:
       cpu: "500m"
@@ -41,9 +59,84 @@ api:
 # Async task workers (celery) also get more headroom in prod.
 worker:
   replicas: 2
+  updateStrategy: *prodRollout
   resources:
     requests:
       cpu: "250m"
       memory: "512Mi"
     limits:
       memory: "1536Mi"
+
+# The components below used to inherit their resources from values.yaml. They are
+# pinned here instead, the same way values-uat.yaml pins its own, because the base
+# file is tuned against dev's idle single 2 vCPU node -- a trim measured there
+# would otherwise silently re-size prod.
+#
+# Where a dev measurement raised a floor (beat, pluginDaemon) prod takes the higher
+# figure: steady-state memory is a property of the component, not of the node it
+# runs on. Where a measurement lowered one (web, sandbox) prod keeps its own, since
+# an idle dev reading understates prod load and lite-prod's ~13GiB allocatable has
+# room to spare. Net effect against the previously inherited values is +448Mi of
+# memory requests and no CPU change.
+#
+# proxy is the one component still inheriting its resources; it has never been
+# tuned per environment.
+
+# No updateStrategy: beat keeps the chart's Recreate, as above.
+beat:
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "448Mi"   # dev measured 333Mi; the old 256Mi request sat below steady state
+    limits:
+      memory: "512Mi"
+
+web:
+  updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "125m"
+      memory: "512Mi"
+    limits:
+      memory: "2Gi"
+
+sandbox:
+  updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "125m"
+      memory: "512Mi"
+    limits:
+      memory: "1Gi"
+
+proxy:
+  updateStrategy: *prodRollout
+
+ssrfProxy:
+  updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      memory: "512Mi"
+
+# Grows with every installed plugin, so the request tracks the measured floor
+# rather than the old flat 512Mi. Re-check as the prod plugin set diverges from dev.
+pluginDaemon:
+  updateStrategy: *prodRollout
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "768Mi"   # dev measured 679Mi
+    limits:
+      memory: "2048Mi"
+
+redis:
+  master:
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"

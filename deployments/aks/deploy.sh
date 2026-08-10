@@ -18,6 +18,15 @@ TF_DIR="$SCRIPT_DIR"
 HELM_REPO_NAME="dify"
 HELM_CHART="dify/dify"
 HELM_REPO_URL="https://borispolonsky.github.io/dify-helm"
+DIFY_CHART_VERSION="${DIFY_CHART_VERSION:-0.37.0}"
+INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.15.1}"
+# UAT supplies this explicitly. Leaving it empty for existing environments
+# preserves the installed cert-manager during normal deployments and avoids an
+# unsafe direct upgrade (or downgrade) across multiple cert-manager minors.
+CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-}"
+QDRANT_CHART_VERSION="${QDRANT_CHART_VERSION:-}"
+DATADOG_OPERATOR_CHART_VERSION="${DATADOG_OPERATOR_CHART_VERSION:-2.25.1}"
+DATADOG_NAMESPACE="datadog"
 NAMESPACE="dify"
 RELEASE_NAME="dify"
 
@@ -39,6 +48,18 @@ done
 
 is_plan()  { [ "$MODE" = "plan-stage" ]; }
 is_apply() { [ "$MODE" = "apply-stage" ]; }
+
+# On an empty state `terraform output -raw` exits 0 and writes its "No outputs
+# found" warning to stdout, so a plain capture returns the warning text rather
+# than an empty string. Emit nothing unless the value looks like a real output.
+tf_output() {
+    local val
+    val=$(terraform output -raw "$1" 2>/dev/null) || return 0
+    case "$val" in
+        *Warning:*|*'╷'*|*'│'*|*$'\n'*) return 0 ;;
+    esac
+    printf '%s' "$val"
+}
 
 CERT_EMAIL="${CERT_EMAIL:-vivek.narayanan@tichealth.com.au}"
 
@@ -91,29 +112,7 @@ fi
 echo -e "${GREEN}✓ Terraform initialized${NC}\n"
 
 # ----- Step 2: Terraform plan/apply (skip when --app) -----------------------
-DB_TARGETS=(
-    -target=azurerm_virtual_network.postgres
-    -target=azurerm_subnet.postgres
-    -target=azurerm_subnet.management
-    -target=azurerm_private_dns_zone.postgres
-    -target=azurerm_private_dns_zone_virtual_network_link.postgres
-    -target=azurerm_private_dns_zone_virtual_network_link.aks
-    -target=azurerm_network_security_group.management
-    -target=azurerm_network_security_rule.management_ssh
-    -target=azurerm_network_security_rule.management_rdp
-    -target=azurerm_network_security_rule.management_to_postgres
-    -target=azurerm_subnet_network_security_group_association.management
-    -target=azurerm_postgresql_flexible_server.pg
-    -target=azurerm_postgresql_flexible_server_database.db
-    -target=azurerm_postgresql_flexible_server_database.plugin_db
-    -target=azurerm_postgresql_flexible_server_configuration.require_secure_transport
-    -target=azurerm_postgresql_flexible_server_configuration.azure_extensions
-    -target=null_resource.create_extensions_dify
-    -target=null_resource.create_extensions_plugin
-    -target=azurerm_virtual_network_peering.postgres_to_aks
-    -target=azurerm_virtual_network_peering.aks_to_postgres
-)
-[ "$DEPLOY_MODE" = "db" ] && TF_SCOPE=("${DB_TARGETS[@]}") || TF_SCOPE=()
+[ "$DEPLOY_MODE" = "db" ] && TF_SCOPE=( -target=module.postgres ) || TF_SCOPE=()
 
 if [ "$DEPLOY_MODE" != "app" ]; then
     echo -e "${YELLOW}Step 2: Terraform (${DEPLOY_MODE})${NC}"
@@ -141,7 +140,8 @@ if [ "$DEPLOY_MODE" = "db" ]; then
     if is_plan; then
         echo -e "${GREEN}✓ Plan stage complete (db scope).${NC}"
     else
-        POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn 2>/dev/null || echo "N/A")
+        POSTGRES_FQDN=$(tf_output postgresql_fqdn)
+        POSTGRES_FQDN="${POSTGRES_FQDN:-N/A}"
         echo -e "${GREEN}DB complete.${NC} PostgreSQL FQDN: $POSTGRES_FQDN"
     fi
     exit 0
@@ -149,9 +149,16 @@ fi
 
 # ----- Step 3: AKS credentials ----------------------------------------------
 echo -e "${YELLOW}Step 3: Getting AKS credentials${NC}"
-CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
-RG_NAME=$(terraform output -raw resource_group_name)
-[ -z "$CLUSTER_NAME" ] || [ -z "$RG_NAME" ] && { echo -e "${RED}Could not read AKS outputs from Terraform state.${NC}"; exit 1; }
+CLUSTER_NAME=$(tf_output aks_cluster_name)
+RG_NAME=$(tf_output resource_group_name)
+if [ -z "$CLUSTER_NAME" ] || [ -z "$RG_NAME" ]; then
+    if is_plan; then
+        echo -e "${YELLOW}AKS does not exist yet; Terraform plan is complete and Helm diffs are skipped.${NC}"
+        exit 0
+    fi
+    echo -e "${RED}Could not read AKS outputs from Terraform state.${NC}"
+    exit 1
+fi
 echo "Cluster: $CLUSTER_NAME   Resource Group: $RG_NAME"
 az aks get-credentials --resource-group "$RG_NAME" --name "$CLUSTER_NAME" --overwrite-existing
 echo -e "${GREEN}✓ Credentials${NC}\n"
@@ -184,12 +191,15 @@ echo -e "${YELLOW}Step 5: Helm repos${NC}"
 helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL"           >/dev/null 2>&1 || true
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
 helm repo add jetstack      https://charts.jetstack.io     >/dev/null 2>&1 || true
+helm repo add qdrant        https://qdrant.to/helm          >/dev/null 2>&1 || true
+helm repo add datadog       https://helm.datadoghq.com      >/dev/null 2>&1 || true
 helm repo update >/dev/null
 echo -e "${GREEN}✓ Helm repos ready${NC}\n"
 
 # ----- Build helm arg arrays (single source of truth) ----------------------
 INGRESS_ARGS=(
     --namespace ingress-nginx
+    --version "$INGRESS_NGINX_CHART_VERSION"
     --set controller.replicaCount=1
     --set controller.autoscaling.enabled=false
     --set controller.updateStrategy.rollingUpdate.maxSurge=0
@@ -199,7 +209,8 @@ INGRESS_ARGS=(
     --set controller.service.type=LoadBalancer
     --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
 )
-CERT_MANAGER_ARGS=( --namespace cert-manager --version v1.13.3 )
+CERT_MANAGER_ARGS=( --namespace cert-manager )
+[[ -n "$CERT_MANAGER_VERSION" ]] && CERT_MANAGER_ARGS+=( --version "$CERT_MANAGER_VERSION" )
 
 helm_op() {
     # $1 = release   $2 = chart   rest = chart-specific args
@@ -213,10 +224,16 @@ helm_op() {
 }
 
 # ----- Step 6-9: ingress-nginx, cert-manager, ClusterIssuer ----------------
-if is_plan; then
+if [ "$DEPLOY_MODE" = "app" ]; then
+    echo -e "${YELLOW}Step 6-9: preserving cluster add-ons (--app)${NC}\n"
+elif is_plan; then
     echo -e "${YELLOW}Step 6-9 (plan): helm diff for ingress-nginx + cert-manager${NC}"
     helm_op ingress-nginx ingress-nginx/ingress-nginx "${INGRESS_ARGS[@]}"
-    helm_op cert-manager  jetstack/cert-manager       "${CERT_MANAGER_ARGS[@]}"
+    if [[ -n "$CERT_MANAGER_VERSION" ]]; then
+        helm_op cert-manager jetstack/cert-manager "${CERT_MANAGER_ARGS[@]}"
+    else
+        echo "Preserving the installed cert-manager; CERT_MANAGER_VERSION is not set."
+    fi
 else
     echo -e "${YELLOW}Step 6: namespace${NC}"
     kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -225,14 +242,18 @@ else
     helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
         "${INGRESS_ARGS[@]}" --create-namespace --wait --timeout 15m
 
-    echo -e "${YELLOW}Step 8: cert-manager${NC}"
-    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.crds.yaml
-    helm upgrade --install cert-manager jetstack/cert-manager \
-        "${CERT_MANAGER_ARGS[@]}" --create-namespace --wait --timeout 5m
+    if [[ -n "$CERT_MANAGER_VERSION" ]]; then
+        echo -e "${YELLOW}Step 8: cert-manager ${CERT_MANAGER_VERSION}${NC}"
+        kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.crds.yaml"
+        helm upgrade --install cert-manager jetstack/cert-manager \
+            "${CERT_MANAGER_ARGS[@]}" --create-namespace --wait --timeout 5m
+    else
+        echo -e "${YELLOW}Step 8: preserving the installed cert-manager${NC}"
+    fi
 
-    if [ -f "$SCRIPT_DIR/coredns-patch.yaml" ]; then
-        echo -e "${YELLOW}Step 8b: CoreDNS patch${NC}"
-        kubectl apply -f "$SCRIPT_DIR/coredns-patch.yaml"
+    if [ -f "$SCRIPT_DIR/coredns-custom.yaml" ]; then
+        echo -e "${YELLOW}Step 8b: AKS-supported CoreDNS customization${NC}"
+        kubectl apply -f "$SCRIPT_DIR/coredns-custom.yaml"
         kubectl -n kube-system rollout restart deployment coredns
         kubectl -n kube-system rollout status  deployment coredns --timeout=60s
     fi
@@ -276,10 +297,10 @@ get_secret() {
 }
 SECRETS_DIR=$(mktemp -d); trap 'rm -rf "$SECRETS_DIR"' EXIT
 
-DIFY_ARGS=( --namespace "$NAMESPACE" )
+DIFY_ARGS=( --namespace "$NAMESPACE" --version "$DIFY_CHART_VERSION" )
 [[ -f "$VALUES_FILE" ]] && DIFY_ARGS+=( -f "$VALUES_FILE" )
 
-POSTGRES_FQDN=$(terraform output -raw postgresql_fqdn 2>/dev/null || true)
+POSTGRES_FQDN=$(tf_output postgresql_fqdn)
 [[ -n "$POSTGRES_FQDN" && "$POSTGRES_FQDN" != *"N/A"* ]] && \
     DIFY_ARGS+=( --set "externalPostgres.address=$POSTGRES_FQDN" )
 
@@ -295,6 +316,8 @@ add_secret_arg TF_VAR_postgresql_password postgresql_password externalPostgres.p
 add_secret_arg TF_VAR_dify_secret_key     dify_secret_key     global.appSecretKey
 add_secret_arg TF_VAR_redis_password      redis_password      redis.auth.password
 add_secret_arg TF_VAR_qdrant_api_key      qdrant_api_key      externalQdrant.apiKey
+add_secret_arg PLUGIN_DAEMON_SERVER_KEY   plugin_daemon_server_key   pluginDaemon.auth.serverKey
+add_secret_arg PLUGIN_DAEMON_DIFY_API_KEY plugin_daemon_dify_api_key pluginDaemon.auth.difyApiKey
 
 # Ingress host: explicit override > project_name in tfvars
 if [[ -n "${DIFY_INGRESS_HOST:-}" ]]; then
@@ -305,16 +328,21 @@ else
     case "$PROJECT_NAME" in
         *prod*) INGRESS_HOST="dify-prod.tichealth.com.au" ;;
         *dev*)  INGRESS_HOST="dify-dev.tichealth.com.au" ;;
-        *test*) INGRESS_HOST="dify-test.tichealth.com.au" ;;
+        *uat*)  INGRESS_HOST="dify-uat.tichealth.com.au" ;;
         *)      INGRESS_HOST="${PROJECT_NAME}.tichealth.com.au" ;;
     esac
 fi
 
-# Production overlay: layer values-prod.yaml on top of the base values for any
-# prod environment (lite-prod / prod-full, both -> dify-prod host). Keyed on the
-# resolved INGRESS_HOST because PROJECT_NAME is not parsed when DIFY_INGRESS_HOST
-# is set (as it always is in CI). Appended AFTER the base -f so the overlay wins.
+# Environment overlays are appended after the base values so they win. The
+# hostname is the stable selector in CI and local runs.
 case "$INGRESS_HOST" in
+    *uat*)
+        if [[ -f "$SCRIPT_DIR/values-uat.yaml" ]]; then
+            DIFY_ARGS+=( -f "$SCRIPT_DIR/values-uat.yaml" )
+            echo "Applying UAT overlay: values-uat.yaml"
+        fi
+        INSTALL_QDRANT="${INSTALL_QDRANT:-true}"
+        ;;
     *prod*)
         if [[ -f "$SCRIPT_DIR/values-prod.yaml" ]]; then
             DIFY_ARGS+=( -f "$SCRIPT_DIR/values-prod.yaml" )
@@ -341,8 +369,92 @@ if [[ -n "${PHOENIX_OTLP_ENDPOINT:-}" ]]; then
 fi
 
 if [ "$MODE" = "interactive" ]; then
-    read -p "Continue with Dify upgrade? (y/n) " -n 1 -r; echo
+    read -p "Continue with application add-on and Dify upgrade? (y/n) " -n 1 -r; echo
     [[ $REPLY =~ ^[Yy]$ ]] || { echo "Cancelled."; exit 1; }
+fi
+
+# UAT provisions the vector store that values.yaml references. Existing dev/prod
+# releases are left untouched until their Qdrant data/migration path is agreed.
+if [ "${INSTALL_QDRANT:-false}" = "true" ]; then
+    QDRANT_CHART_VERSION="${QDRANT_CHART_VERSION:-$(get_secret QDRANT_CHART_VERSION qdrant_chart_version)}"
+    QDRANT_CHART_VERSION="${QDRANT_CHART_VERSION:-1.16.3}"
+    QDRANT_KEY_FILE="$SECRETS_DIR/qdrant_api_key"
+    [ -s "$QDRANT_KEY_FILE" ] || { echo -e "${RED}Qdrant API key is required.${NC}"; exit 1; }
+
+    QDRANT_ARGS=(
+        --namespace "$NAMESPACE"
+        --version "$QDRANT_CHART_VERSION"
+        --set replicaCount=1
+        --set persistence.size=10Gi
+        --set resources.requests.cpu=50m
+        --set resources.requests.memory=256Mi
+        --set resources.limits.memory=2Gi
+        --set-file "apiKey=$QDRANT_KEY_FILE"
+    )
+
+    if is_plan; then
+        helm diff upgrade dify-qdrant qdrant/qdrant "${QDRANT_ARGS[@]}" --allow-unreleased \
+            > helm-diff-qdrant.log || true
+    else
+        helm upgrade --install dify-qdrant qdrant/qdrant "${QDRANT_ARGS[@]}" \
+            --create-namespace --atomic --wait --timeout 15m
+        echo -e "${GREEN}✓ Qdrant deployed${NC}"
+    fi
+fi
+
+# ----- Step 10b: Datadog (optional) ------------------------------------------
+# Node-level container log collection. Installs only when DATADOG_API_KEY is set,
+# the same optional-feature pattern PHOENIX_OTLP_ENDPOINT uses, so an environment
+# without the secret is left completely untouched. Runs before the Dify upgrade so
+# the Agent is already tailing when Dify's pods roll.
+#
+# `--db` exits before this point, so no scope guard is needed here.
+DATADOG_API_KEY="${DATADOG_API_KEY:-$(get_secret DATADOG_API_KEY datadog_api_key)}"
+
+case "$INGRESS_HOST" in
+    *uat*)  DD_ENV="uat" ;;
+    *prod*) DD_ENV="prod" ;;
+    *)      DD_ENV="dev" ;;
+esac
+DD_MANIFEST="$SCRIPT_DIR/datadog/datadog-agent-${DD_ENV}.yaml"
+
+if [[ -z "$DATADOG_API_KEY" ]]; then
+    echo -e "${YELLOW}Step 10b: Datadog skipped (DATADOG_API_KEY not set)${NC}\n"
+elif [[ ! -f "$DD_MANIFEST" ]]; then
+    # Prod has no manifest on purpose: it is promoted only after UAT is validated.
+    echo -e "${YELLOW}Step 10b: Datadog skipped (no datadog-agent-${DD_ENV}.yaml)${NC}\n"
+elif is_plan; then
+    echo -e "${YELLOW}Step 10b (plan): Datadog ${DD_ENV}${NC}"
+    helm diff upgrade datadog-operator datadog/datadog-operator \
+        --namespace "$DATADOG_NAMESPACE" \
+        --version "$DATADOG_OPERATOR_CHART_VERSION" \
+        -f "$SCRIPT_DIR/datadog/operator-values.yaml" \
+        --allow-unreleased > helm-diff-datadog.log || true
+    echo "DatadogAgent manifest that would be applied: $DD_MANIFEST"
+else
+    echo -e "${YELLOW}Step 10b: Datadog ${DD_ENV}${NC}"
+    kubectl create namespace "$DATADOG_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+    # --from-file, not --from-literal: a literal puts the API key in the process
+    # arguments, where any process listing on the runner can read it.
+    DD_KEY_FILE="$SECRETS_DIR/api-key"
+    printf '%s' "$DATADOG_API_KEY" > "$DD_KEY_FILE"
+    kubectl -n "$DATADOG_NAMESPACE" create secret generic datadog-secret \
+        --from-file="api-key=$DD_KEY_FILE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+    helm upgrade --install datadog-operator datadog/datadog-operator \
+        --namespace "$DATADOG_NAMESPACE" \
+        --version "$DATADOG_OPERATOR_CHART_VERSION" \
+        -f "$SCRIPT_DIR/datadog/operator-values.yaml" \
+        --create-namespace --wait --timeout 10m
+
+    # The CR cannot be applied until the Operator's CRD is established.
+    kubectl wait --for=condition=established --timeout=120s \
+        crd/datadogagents.datadoghq.com
+
+    kubectl apply -f "$DD_MANIFEST"
+    echo -e "${GREEN}✓ Datadog deployed (${DD_ENV})${NC}\n"
 fi
 
 if is_plan; then
@@ -353,8 +465,13 @@ if is_plan; then
     exit 0
 fi
 
+# No --atomic here, unlike Qdrant above. The API runs Alembic migrations on
+# startup, and Helm cannot undo those: an auto-rollback restores older image
+# tags against an already-migrated schema, and the older API then refuses to
+# boot on an alembic revision it doesn't know. --wait still fails the job on a
+# bad rollout; it just leaves the release where a human can look at it.
 helm upgrade --install "$RELEASE_NAME" "$HELM_CHART" "${DIFY_ARGS[@]}" \
-    --create-namespace --atomic --wait --timeout 45m
+    --create-namespace --wait --timeout 15m
 echo -e "${GREEN}✓ Dify deployed${NC}\n"
 
 kubectl wait --for=condition=available --timeout=300s deployment/"$RELEASE_NAME"-api -n "$NAMESPACE" || true

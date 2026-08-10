@@ -1,0 +1,27 @@
+# Datadog Operator values, shared by every environment.
+#
+# The Operator only reconciles the DatadogAgent resource; it collects no telemetry
+# itself, so its footprint stays flat regardless of how many features the
+# DatadogAgent turns on. Per-environment configuration lives in
+# datadog-agent-<env>.yaml, not here.
+
+replicaCount: 1
+
+# The chart ships `resources: {}`, which means the Operator pod would run with no
+# requests at all. On a single-node cluster that is BestEffort QoS: first in line
+# for eviction, and invisible to the scheduler when it decides whether the next
+# pod fits. Size it explicitly.
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    memory: "256Mi"
+
+logLevel: "info"
+
+# The CRD set is deliberately left at chart defaults. Trimming it is tempting on a
+# small cluster, but the Operator reconciles against several of these internally
+# and a missing CRD surfaces as an opaque reconcile failure rather than a clear
+# error. CRDs cost no runtime resources.
+installCRDs: true

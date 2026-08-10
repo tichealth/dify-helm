@@ -4,11 +4,24 @@ resource "azurerm_kubernetes_cluster" "aks" {
   resource_group_name = var.resource_group_name
   dns_prefix          = "${var.name_prefix}-${var.suffix_hex}"
 
+  # Set at creation only. Manual `az aks upgrade` drives ongoing changes.
+  kubernetes_version = var.kubernetes_version
+
   default_node_pool {
     name                        = "system"
     node_count                  = var.node_count
     vm_size                     = var.vm_size
+    orchestrator_version        = var.kubernetes_version
     temporary_name_for_rotation = "systemtemp"
+
+    # Terraform owns these; do not set them with `az aks nodepool update`.
+    # Clearing drain_timeout_in_minutes (non-zero -> 0) replaces the entire
+    # cluster in azurerm, so config must always carry the live value.
+    upgrade_settings {
+      max_surge                     = "1"
+      drain_timeout_in_minutes      = 30
+      node_soak_duration_in_minutes = 5
+    }
   }
 
   identity {
@@ -16,6 +29,20 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      kubernetes_version,
+      default_node_pool[0].orchestrator_version,
+      # AKS enables the OIDC issuer itself on current versions and rejects any
+      # attempt to turn it off ("OIDCIssuerFeatureCannotBeDisabled"), so the
+      # provider default of false is unappliable drift. Ignoring it keeps the
+      # attribute at whatever each cluster already has: UAT stays enabled, and
+      # Dev and Prod are not flipped by an unrelated deploy. Manage it here
+      # explicitly if Workload Identity (TODO.md P3) ever needs it on.
+      oidc_issuer_enabled,
+    ]
+  }
 }
 
 resource "azurerm_kubernetes_cluster_node_pool" "spot" {

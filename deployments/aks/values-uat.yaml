@@ -1,0 +1,115 @@
+# UAT overlay for Dify on AKS.
+#
+# UAT exercises the production service topology and PostgreSQL TLS behavior, but
+# stays within a single Standard_D2s_v5 node. It is not an HA environment.
+
+# Dify 1.14.2 image tags live in values.yaml (promoted). This overlay only
+# sizes resources and sets PGSSLMODE for the single-node UAT profile.
+
+# Resource requests are sized for the single Standard_D2s_v5, whose 1900m/5929Mi
+# allocatable is already ~930m/~994Mi committed to AKS system pods. That leaves
+# roughly 950m and 4.9Gi for Dify, Qdrant and ingress-nginx combined.
+#
+# Two constraints drive the numbers below.
+#
+# CPU requests are a scheduling reservation, not a runtime cap: values.yaml sets
+# no CPU limits, so every pod still bursts into whatever the node has spare. The
+# only runtime effect of a request is the pod's proportional share under
+# contention, so trimming the idle sidecars raises the API's share rather than
+# lowering it. Measured idle draw across the whole namespace was 35m.
+#
+# Memory requests are sized at or above measured steady state, because a pod
+# exceeding its request is the first thing kubelet evicts under node pressure.
+#
+# Both dimensions keep headroom larger than the biggest single pod request
+# (api, 150m/768Mi). The chart's Deployments roll with maxSurge 25%, which for
+# one replica rounds up to a whole extra pod, so an upgrade has to place a second
+# API alongside the first. Headroom below that figure deadlocks every future
+# deploy, not just the initial install.
+api:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "768Mi"   # measured 617Mi
+    limits:
+      memory: "2Gi"
+  extraEnv:
+    - name: SERVER_WORKER_CLASS
+      value: "gevent"
+    - name: SERVER_WORKER_AMOUNT
+      value: "2"
+    - name: SERVER_WORKER_CONNECTIONS
+      value: "50"
+    - name: PGSSLMODE
+      value: "require"
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "384Mi"
+    limits:
+      memory: "1536Mi"
+  extraEnv:
+    - name: PGSSLMODE
+      value: "require"
+
+# Celery beat only emits periodic tasks, so it needs almost no CPU. Its memory
+# request goes up rather than down: it was measured at 321Mi against values.yaml's
+# 256Mi request, which made it the first candidate for eviction under pressure.
+beat:
+  resources:
+    requests:
+      cpu: "25m"
+      memory: "384Mi"   # measured 321Mi, above the base 256Mi request
+    limits:
+      memory: "512Mi"
+  extraEnv:
+    - name: PGSSLMODE
+      value: "require"
+
+pluginDaemon:
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "256Mi"   # measured 17Mi; headroom left for installed plugins
+    limits:
+      memory: "2048Mi"
+  extraEnv:
+    - name: DB_SSL_MODE
+      value: "require"
+
+web:
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"   # measured 353Mi
+    limits:
+      memory: "2Gi"
+
+sandbox:
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "192Mi"   # measured 44Mi
+    limits:
+      memory: "1Gi"
+
+ssrfProxy:
+  resources:
+    requests:
+      cpu: "25m"
+      memory: "128Mi"   # measured 36Mi
+    limits:
+      memory: "512Mi"
+
+redis:
+  master:
+    resources:
+      requests:
+        cpu: "25m"
+        memory: "128Mi"   # measured 8Mi; room left for cache growth
+      limits:
+        memory: "512Mi"

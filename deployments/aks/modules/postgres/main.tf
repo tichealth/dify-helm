@@ -113,13 +113,21 @@ resource "azurerm_private_dns_zone_virtual_network_link" "postgres" {
   tags                  = var.tags
 }
 
+# Counts below use vars only (not aks_node_resource_group or local.aks_vnet_id)
+# so Terraform can evaluate them at plan time. Those derive from the AKS cluster
+# and are unknown whenever it is being created or replaced, which makes any
+# count referencing them fail with "Invalid count argument".
+locals {
+  peer_aks_postgres = var.use_azure_postgres && var.create_vnet_for_postgres
+}
+
 data "azurerm_resource_group" "aks_node" {
-  count = var.use_azure_postgres && var.create_vnet_for_postgres && var.aks_node_resource_group != null ? 1 : 0
+  count = local.peer_aks_postgres ? 1 : 0
   name  = var.aks_node_resource_group
 }
 
 data "azurerm_resources" "aks_vnets" {
-  count               = var.use_azure_postgres && var.create_vnet_for_postgres && var.aks_node_resource_group != null ? 1 : 0
+  count               = local.peer_aks_postgres ? 1 : 0
   resource_group_name = data.azurerm_resource_group.aks_node[0].name
   type                = "Microsoft.Network/virtualNetworks"
 }
@@ -130,7 +138,7 @@ locals {
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "aks" {
-  count                 = var.use_azure_postgres && var.create_vnet_for_postgres && local.aks_vnet_id != null ? 1 : 0
+  count                 = local.peer_aks_postgres ? 1 : 0
   name                  = "${var.name_prefix}-aks-dns-link"
   resource_group_name   = var.resource_group_name
   private_dns_zone_name = azurerm_private_dns_zone.postgres[0].name
@@ -142,7 +150,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "aks" {
 }
 
 resource "azurerm_virtual_network_peering" "postgres_to_aks" {
-  count                     = var.use_azure_postgres && var.create_vnet_for_postgres && local.aks_vnet_id != null ? 1 : 0
+  count                     = local.peer_aks_postgres ? 1 : 0
   name                      = "${var.name_prefix}-postgres-to-aks"
   resource_group_name       = var.resource_group_name
   virtual_network_name      = azurerm_virtual_network.postgres[0].name
@@ -155,7 +163,7 @@ resource "azurerm_virtual_network_peering" "postgres_to_aks" {
 }
 
 resource "azurerm_virtual_network_peering" "aks_to_postgres" {
-  count                     = var.use_azure_postgres && var.create_vnet_for_postgres && local.aks_vnet_id != null ? 1 : 0
+  count                     = local.peer_aks_postgres ? 1 : 0
   name                      = "${var.name_prefix}-aks-to-postgres"
   resource_group_name       = data.azurerm_resource_group.aks_node[0].name
   virtual_network_name      = local.aks_vnet_name
@@ -178,6 +186,7 @@ resource "azurerm_postgresql_flexible_server" "pg" {
   sku_name                      = var.postgres_sku_name
   storage_mb                    = var.postgres_storage_mb
   storage_tier                  = var.postgres_storage_tier
+  backup_retention_days         = var.postgres_backup_retention_days
   public_network_access_enabled = local.postgres_public_access
 
   delegated_subnet_id = var.create_vnet_for_postgres ? azurerm_subnet.postgres[0].id : null
@@ -240,8 +249,12 @@ resource "null_resource" "create_pg_app_dns_record" {
         echo "ERROR: Verify failed – invalid IP format: $IP" >&2
         exit 1
       fi
-      if ! echo "$IP" | grep -qE '^10\.1\.1\.'; then
-        echo "WARN: Verify – IP $IP not in postgres subnet 10.1.1.0/24; continuing anyway." >&2
+      PG_SUBNET='${length(var.postgres_subnet_address_prefixes) > 0 ? var.postgres_subnet_address_prefixes[0] : ""}'
+      if [ -n "$PG_SUBNET" ]; then
+        PG_PREFIX=$(echo "$PG_SUBNET" | cut -d/ -f1 | cut -d. -f1-3)
+        if ! echo "$IP" | grep -qE "^$PG_PREFIX\."; then
+          echo "WARN: Verify – IP $IP not in postgres subnet $PG_SUBNET; continuing anyway." >&2
+        fi
       fi
       echo "Verify OK: Azure internal A record exists, IP=$IP. Creating $PG_NAME -> $IP ..."
       az network private-dns record-set a add-record -g "$RG" --zone-name "$ZONE" --record-set-name "$PG_NAME" --ipv4-address "$IP"

@@ -1,4 +1,4 @@
-# Operations: Endpoints and Keys
+# Endpoints and keys
 
 How to get the main endpoints and secrets used by the deployment.
 
@@ -34,26 +34,26 @@ Use the `EXTERNAL-IP` column. Access Dify at `https://<your-domain>/apps` (once 
 
 ---
 
-## Azure Blob Storage account key
+## Terraform backend storage key
 
-Used for Dify file storage (and optionally Terraform state). **Do not commit the key.**
+Creating the backend resource group, storage account, and container is covered
+once in [GITHUB_ACTIONS.md](./GITHUB_ACTIONS.md#b-terraform-backend).
 
-**Azure Portal:** Storage accounts → your account → Access keys → Show → Copy (key1 or key2).
-
-**Azure CLI:**
+To read the key for an account that already exists:
 
 ```bash
 az storage account keys list \
-  --resource-group <resource-group-name> \
+  --resource-group <backend-resource-group> \
   --account-name <storage-account-name> \
   --query "[0].value" -o tsv
 ```
 
-**Create storage account (if needed):**
+Portal equivalent: Storage accounts → your account → Access keys → Show → copy
+key1 or key2.
 
-```bash
-az storage account create --name <name> --resource-group <rg> --location australiaeast --sku Standard_LRS --kind StorageV2
-az storage container create --name dify-data --account-name <name> --account-key <key>
-```
+Use it only in a gitignored `backend.azurerm.tfvars` or as the
+`AZURE_BLOB_ACCOUNT_KEY` GitHub secret — never commit it (see
+[SECRETS.md](./SECRETS.md)).
 
-Use the key only in local `terraform.tfvars` or GitHub Secrets (see [GITHUB_ACTIONS_SECRETS.md](./GITHUB_ACTIONS_SECRETS.md)); never commit it.
+This account holds Terraform state only. Dify and plugin files live on Azure
+File PVCs; the Blob variables are not wired to application storage.
