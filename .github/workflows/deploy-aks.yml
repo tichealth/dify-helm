@@ -3,6 +3,10 @@ name: Deploy or teardown Dify on AKS
 # Two-job flow: plan -> (Environment approval) -> apply.
 # Required reviewers must be configured on the GitHub Environment (`dev`/`uat`/`prod`)
 # for the apply gate to actually pause. See deployments/aks/GITHUB_ACTIONS.md.
+#
+# action=stop/start runs only the `power` job: `az aks stop`/`az aks start` on the
+# environment's cluster. No Terraform plan/apply, and PostgreSQL is untouched.
+# The same Environment approval gate applies.
 
 on:
   workflow_dispatch:
@@ -13,10 +17,10 @@ on:
         type: boolean
         default: false
       action:
-        description: 'Deploy, teardown, or force-unlock stale Terraform state'
+        description: 'Deploy, teardown, force-unlock stale Terraform state, or stop/start the AKS cluster (DB untouched)'
         required: true
         type: choice
-        options: [deploy, teardown, force-unlock]
+        options: [deploy, teardown, force-unlock, stop, start]
         default: 'deploy'
       lock_id:
         description: 'Terraform lock ID (required when action=force-unlock; copy from the state lock error)'
@@ -103,8 +107,91 @@ jobs:
             exit "$RC"
           fi
 
+  power:
+    if: inputs.enabled && (inputs.action == 'stop' || inputs.action == 'start')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: "${{ (inputs.environment == 'lite-prod' || inputs.environment == 'prod-full') && 'prod' || inputs.environment }}"
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Initialises Terraform against this environment's backend so the cluster
+      # name/RG come from state rather than being hard-coded.
+      - uses: ./.github/actions/setup-aks
+        with:
+          environment: ${{ inputs.environment }}
+          azure_credentials: ${{ secrets.AZURE_CREDENTIALS }}
+          azure_blob_account_name: ${{ vars.AZURE_BLOB_ACCOUNT_NAME }}
+          azure_blob_account_key: ${{ secrets.AZURE_BLOB_ACCOUNT_KEY }}
+          backend_resource_group: ${{ vars.BACKEND_RESOURCE_GROUP }}
+          dify_secret_key: ${{ secrets.DIFY_SECRET_KEY }}
+          postgresql_password: ${{ secrets.POSTGRESQL_PASSWORD }}
+          redis_password: ${{ secrets.REDIS_PASSWORD }}
+          qdrant_api_key: ${{ secrets.QDRANT_API_KEY }}
+          plugin_daemon_server_key: ${{ secrets.PLUGIN_DAEMON_SERVER_KEY }}
+          plugin_daemon_dify_api_key: ${{ secrets.PLUGIN_DAEMON_DIFY_API_KEY }}
+          phoenix_otlp_endpoint: ${{ vars.PHOENIX_OTLP_ENDPOINT }}
+          datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+
+      - name: ${{ inputs.action }} AKS cluster
+        timeout-minutes: 30
+        run: |
+          tf_output() {
+            local val
+            val=$(terraform output -raw "$1" 2>/dev/null) || return 0
+            case "$val" in
+              *Warning:*|*'╷'*|*'│'*|*$'\n'*) return 0 ;;
+            esac
+            printf '%s' "$val"
+          }
+          CLUSTER=$(tf_output aks_cluster_name)
+          RG=$(tf_output resource_group_name)
+          if [ -z "$CLUSTER" ] || [ -z "$RG" ]; then
+            echo "Could not get cluster/RG from TF state for ${{ inputs.environment }}."
+            exit 1
+          fi
+
+          STATE=$(az aks show -g "$RG" -n "$CLUSTER" --query powerState.code -o tsv)
+          echo "$CLUSTER ($RG) is $STATE"
+
+          if [ "${{ inputs.action }}" = "stop" ]; then
+            if [ "$STATE" = "Running" ]; then
+              az aks stop -g "$RG" -n "$CLUSTER"
+            else
+              echo "Already $STATE; nothing to do."
+            fi
+          else
+            if [ "$STATE" = "Stopped" ]; then
+              az aks start -g "$RG" -n "$CLUSTER"
+            else
+              echo "Already $STATE; nothing to do."
+            fi
+          fi
+
+          echo "Power state now: $(az aks show -g "$RG" -n "$CLUSTER" --query powerState.code -o tsv)"
+
+      - name: Post-start checks
+        if: inputs.action == 'start'
+        run: |
+          CLUSTER=$(terraform output -raw aks_cluster_name)
+          RG=$(terraform output -raw resource_group_name)
+          az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
+          kubectl wait --for=condition=Ready nodes --all --timeout=10m
+          kubectl -n dify wait --for=condition=Available deployment --all --timeout=15m || \
+            kubectl -n dify get pods -o wide
+          LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+          echo "=============================================="
+          echo "Ingress IP: ${LB_IP:-<pending>}"
+          echo "Check the DNS A record still points here."
+          echo "=============================================="
+
   plan:
-    if: inputs.enabled && inputs.action != 'force-unlock'
+    if: inputs.enabled && (inputs.action == 'deploy' || inputs.action == 'teardown')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -154,7 +241,7 @@ jobs:
             ${{ env.TF_DIR }}/helm-diff*.log
 
   apply:
-    if: inputs.enabled && inputs.action != 'force-unlock'
+    if: inputs.enabled && (inputs.action == 'deploy' || inputs.action == 'teardown')
     needs: [plan]
     runs-on: ubuntu-latest
     permissions:
